@@ -167,7 +167,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             channel.send({
               type: 'broadcast',
               event: 'game_start',
-              payload: { match: state.match }
+              payload: { match: state.match, correctAnswer: state.correctAnswer }
             });
           }
         }
