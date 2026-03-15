@@ -124,9 +124,15 @@ export function GameScreen() {
             <div className="text-3xl font-black text-red-500 uppercase tracking-widest text-center">
               Hai Perso!<br/><span className="text-xl text-zinc-400">L'avversario è stato più veloce</span>
             </div>
+            {correctAnswer && (
+              <div className="text-lg text-zinc-300 text-center bg-zinc-900/80 px-6 py-4 rounded-xl border border-zinc-700 shadow-lg mt-2">
+                <span className="block mb-1 text-sm uppercase tracking-wider text-zinc-400">Una risposta corretta era:</span>
+                <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>
+              </div>
+            )}
             <button
               onClick={() => { resetGame(); findMatch(); }}
-              className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors"
+              className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors mt-4"
             >
               Cerca Nuova Partita
             </button>
@@ -142,7 +148,7 @@ export function GameScreen() {
             <div className="text-3xl font-black text-red-500 uppercase tracking-widest">
               Tempo Scaduto
             </div>
-            {gameMode === 'ai' && correctAnswer && (
+            {correctAnswer && (
               <div className="text-lg text-zinc-300 text-center bg-zinc-900/80 px-6 py-4 rounded-xl border border-zinc-700 shadow-lg">
                 <span className="block mb-1 text-sm uppercase tracking-wider text-zinc-400">Una risposta corretta era:</span>
                 <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>

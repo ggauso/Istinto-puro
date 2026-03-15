@@ -148,7 +148,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       .on('broadcast', { event: 'game_start' }, (payload) => {
         console.log('Partita iniziata!');
         if (readyInterval) clearInterval(readyInterval);
-        set({ match: payload.payload.match, status: 'playing', timeLeft: 10 });
+        set({ match: payload.payload.match, status: 'playing', timeLeft: 10, correctAnswer: payload.payload.correctAnswer });
       })
       .on('broadcast', { event: 'player_won' }, (payload) => {
         if (payload.payload.playerId !== get().playerId) {
@@ -315,7 +315,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameChannel.send({
           type: 'broadcast',
           event: 'game_start',
-          payload: { match: matchData }
+          payload: { match: matchData, correctAnswer: fetchedAnswer }
         });
       }
 
