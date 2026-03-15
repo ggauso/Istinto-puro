@@ -1,7 +1,8 @@
 import React from 'react';
 import { useGameStore } from '../store';
+import { useAuthStore } from '../authStore';
 import { motion } from 'motion/react';
-import { Trophy, Play, Loader2, Globe, Users, Bot } from 'lucide-react';
+import { Trophy, Play, Loader2, Globe, Users, Bot, User } from 'lucide-react';
 
 const LEAGUES = [
   { id: null, name: 'Tutti i Campionati' },
@@ -12,11 +13,45 @@ const LEAGUES = [
   { id: 61, name: 'Ligue 1 🇫🇷' },
 ];
 
-export function HomeScreen() {
+interface HomeScreenProps {
+  onNavigateToAuth: () => void;
+  onNavigateToProfile: () => void;
+}
+
+export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
   const { findMatch, status, selectedLeague, setSelectedLeague, gameMode, setGameMode } = useGameStore();
+  const { user, profile } = useAuthStore();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-6 font-sans">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-6 font-sans relative">
+      <div className="absolute top-6 right-6">
+        {user ? (
+          <button 
+            onClick={onNavigateToProfile}
+            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
+          >
+            <div className="w-6 h-6 rounded-full bg-[#FFD700] flex items-center justify-center overflow-hidden">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-4 h-4 text-black" />
+              )}
+            </div>
+            <span className="font-medium text-sm">
+              {profile?.first_name || user.email?.split('@')[0]}
+            </span>
+          </button>
+        ) : (
+          <button 
+            onClick={onNavigateToAuth}
+            className="flex items-center gap-2 bg-[#FFD700] text-black hover:bg-yellow-400 px-4 py-2 rounded-full font-bold transition-colors"
+          >
+            <User className="w-4 h-4" />
+            <span>Accedi</span>
+          </button>
+        )}
+      </div>
+
       <motion.div
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
