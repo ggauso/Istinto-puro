@@ -4,7 +4,11 @@ import { CircularTimer } from './CircularTimer';
 import { motion } from 'motion/react';
 
 export function GameScreen() {
-  const { match, score, timeLeft, status, validatePlayer, tickTimer, fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer } = useGameStore();
+  const { 
+    match, score, timeLeft, status, validatePlayer, tickTimer, 
+    fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer,
+    round, playerRoundsWon, opponentRoundsWon, streak, lastScoreAdded, lastRarity, lastCombo, isHost
+  } = useGameStore();
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +28,17 @@ export function GameScreen() {
     }
   }, [status]);
 
+  useEffect(() => {
+    if (status === 'won' || status === 'opponent_won' || (status === 'lost' && gameMode === 'pvp')) {
+      if (isHost) {
+        const timer = setTimeout(() => {
+          fetchMatchAndBroadcast();
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [status, isHost, gameMode, fetchMatchAndBroadcast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || status !== 'playing') return;
@@ -32,10 +47,6 @@ export function GameScreen() {
     if (isValid) {
       setInput('');
       setError(false);
-      // Wait a bit, then fetch next match
-      setTimeout(() => {
-        fetchMatchAndBroadcast();
-      }, 1500);
     } else {
       setError(true);
       setTimeout(() => setError(false), 500);
@@ -48,9 +59,35 @@ export function GameScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 font-sans">
-      <div className="absolute top-4 left-4 text-2xl font-bold text-[#FFD700]">
-        Score: {score}
+      <div className="absolute top-4 left-4 flex flex-col">
+        <div className="text-2xl font-bold text-[#FFD700]">
+          Score: {score}
+        </div>
+        {streak >= 3 && (
+          <div className="text-sm font-bold text-orange-500 flex items-center mt-1">
+            🔥 Streak: {streak}
+          </div>
+        )}
       </div>
+
+      {gameMode === 'pvp' && (
+        <div className="absolute top-4 right-4 flex flex-col items-end">
+          <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
+          <div className="flex items-center space-x-2 mt-1">
+            <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 1 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+            <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 2 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+            <span className="text-zinc-500 mx-2">-</span>
+            <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 2 ? 'bg-red-500' : 'bg-zinc-700'}`} />
+            <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 1 ? 'bg-red-500' : 'bg-zinc-700'}`} />
+          </div>
+        </div>
+      )}
+
+      {gameMode === 'ai' && (
+        <div className="absolute top-4 right-4 flex flex-col items-end">
+          <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
+        </div>
+      )}
 
       <div className="flex flex-col items-center space-y-8 w-full max-w-md">
         <CircularTimer timeLeft={timeLeft} totalTime={totalTime} />
@@ -109,9 +146,16 @@ export function GameScreen() {
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-2xl font-black text-emerald-400 uppercase tracking-widest"
+            className="flex flex-col items-center space-y-2"
           >
-            Corretto!
+            <div className="text-2xl font-black text-emerald-400 uppercase tracking-widest">
+              Corretto!
+            </div>
+            <div className="text-xl font-bold text-[#FFD700]">+{lastScoreAdded} pt</div>
+            <div className="flex space-x-4 text-sm text-zinc-400 mt-2">
+              <span>Rarità: x{lastRarity}</span>
+              <span>Combo: x{lastCombo}</span>
+            </div>
           </motion.div>
         )}
 
@@ -122,7 +166,7 @@ export function GameScreen() {
             className="flex flex-col items-center space-y-4"
           >
             <div className="text-3xl font-black text-red-500 uppercase tracking-widest text-center">
-              Hai Perso!<br/><span className="text-xl text-zinc-400">L'avversario è stato più veloce</span>
+              Round Perso!<br/><span className="text-xl text-zinc-400">L'avversario è stato più veloce</span>
             </div>
             {correctAnswer && (
               <div className="text-lg text-zinc-300 text-center bg-zinc-900/80 px-6 py-4 rounded-xl border border-zinc-700 shadow-lg mt-2">
@@ -130,12 +174,6 @@ export function GameScreen() {
                 <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>
               </div>
             )}
-            <button
-              onClick={() => { resetGame(); findMatch(); }}
-              className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors mt-4"
-            >
-              Cerca Nuova Partita
-            </button>
           </motion.div>
         )}
 
@@ -154,6 +192,46 @@ export function GameScreen() {
                 <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>
               </div>
             )}
+            {gameMode === 'ai' && (
+              <button
+                onClick={() => { resetGame(); findMatch(); }}
+                className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors mt-4"
+              >
+                Riprova
+              </button>
+            )}
+          </motion.div>
+        )}
+
+        {status === 'match_won' && (
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex flex-col items-center space-y-4"
+          >
+            <div className="text-4xl font-black text-emerald-400 uppercase tracking-widest text-center">
+              Vittoria!
+            </div>
+            <div className="text-lg font-medium text-emerald-500">Ultimo Round: +{lastScoreAdded} pt (Rarità x{lastRarity}, Combo x{lastCombo})</div>
+            <div className="text-2xl font-bold text-[#FFD700] mt-2">Score Totale: {score}</div>
+            <button
+              onClick={() => { resetGame(); findMatch(); }}
+              className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors mt-4"
+            >
+              Cerca Nuova Partita
+            </button>
+          </motion.div>
+        )}
+
+        {status === 'match_lost' && (
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex flex-col items-center space-y-4"
+          >
+            <div className="text-4xl font-black text-red-500 uppercase tracking-widest text-center">
+              Sconfitta!
+            </div>
             <button
               onClick={() => { resetGame(); findMatch(); }}
               className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-yellow-400 transition-colors mt-4"

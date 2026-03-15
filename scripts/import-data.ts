@@ -118,7 +118,8 @@ async function importData() {
           const { error: teamError } = await supabase!.from('teams').upsert({
             id: team.id,
             name: team.name,
-            logo_url: team.logo
+            logo_url: team.logo,
+            league_id: leagueId
           }, { onConflict: 'id' });
           
           if (teamError) {

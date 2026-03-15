@@ -10,7 +10,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "start": "node server.ts",
-    "import-data": "tsx scripts/import-data.ts"
+    "import-data": "tsx scripts/import-data.ts",
+    "fix-leagues": "tsx scripts/fix-leagues.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

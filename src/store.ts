@@ -22,12 +22,22 @@ interface GameState {
   match: MatchData | null;
   score: number;
   timeLeft: number;
-  status: 'idle' | 'searching' | 'joining' | 'starting' | 'playing' | 'won' | 'lost' | 'opponent_won';
+  status: 'idle' | 'searching' | 'joining' | 'starting' | 'playing' | 'won' | 'lost' | 'opponent_won' | 'match_won' | 'match_lost';
   gameChannel: RealtimeChannel | null;
   matchmakingChannel: RealtimeChannel | null;
   selectedLeague: number | null;
   gameMode: 'pvp' | 'ai';
   correctAnswer: string | null;
+  
+  isHost: boolean;
+  round: number;
+  playerRoundsWon: number;
+  opponentRoundsWon: number;
+  streak: number;
+  roundStartTime: number | null;
+  lastScoreAdded: number;
+  lastRarity: number;
+  lastCombo: number;
   
   setGameMode: (mode: 'pvp' | 'ai') => void;
   setSelectedLeague: (leagueId: number | null) => void;
@@ -53,6 +63,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectedLeague: null,
   gameMode: 'pvp',
   correctAnswer: null,
+  isHost: false,
+  round: 0,
+  playerRoundsWon: 0,
+  opponentRoundsWon: 0,
+  streak: 0,
+  roundStartTime: null,
+  lastScoreAdded: 0,
+  lastRarity: 1,
+  lastCombo: 1,
 
   setGameMode: (mode) => set({ gameMode: mode }),
   setSelectedLeague: (leagueId) => set({ selectedLeague: leagueId }),
@@ -61,7 +80,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { gameMode } = get();
     
     if (gameMode === 'ai') {
-      set({ status: 'starting' });
+      set({ status: 'starting', isHost: true });
       get().fetchMatchAndBroadcast();
       return;
     }
@@ -125,7 +144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   joinGameRoom: (roomId: string, isHost: boolean) => {
     const state = get();
     if (state.status !== 'searching') return;
-    set({ status: 'joining' });
+    set({ status: 'joining', isHost });
 
     const { matchmakingChannel, gameChannel: existingGameChannel } = get();
     if (matchmakingChannel) {
@@ -148,11 +167,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       .on('broadcast', { event: 'game_start' }, (payload) => {
         console.log('Partita iniziata!');
         if (readyInterval) clearInterval(readyInterval);
-        set({ match: payload.payload.match, status: 'playing', timeLeft: 10, correctAnswer: payload.payload.correctAnswer });
+        set((state) => ({ 
+          match: payload.payload.match, 
+          status: 'playing', 
+          timeLeft: 10, 
+          correctAnswer: payload.payload.correctAnswer,
+          roundStartTime: Date.now(),
+          round: state.round + 1
+        }));
       })
       .on('broadcast', { event: 'player_won' }, (payload) => {
         if (payload.payload.playerId !== get().playerId) {
-          set({ status: 'opponent_won' });
+          const newOpponentRoundsWon = get().opponentRoundsWon + 1;
+          let nextStatus: GameState['status'] = 'opponent_won';
+          if (newOpponentRoundsWon >= 2) {
+            nextStatus = 'match_lost';
+          }
+          set({ 
+            status: nextStatus, 
+            opponentRoundsWon: newOpponentRoundsWon,
+            streak: 0
+          });
         }
       })
       .on('broadcast', { event: 'guest_ready' }, () => {
@@ -323,7 +358,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         match: matchData, 
         timeLeft: gameMode === 'ai' ? 15 : 10, 
         status: 'playing', 
-        correctAnswer: fetchedAnswer 
+        correctAnswer: fetchedAnswer,
+        roundStartTime: Date.now(),
+        round: state.round + 1
       }));
     } catch (error) {
       console.error('Errore critico durante il fetch del match:', error);
@@ -335,36 +372,77 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!match) return false;
 
     let isCorrect = false;
+    let rarity = 1.0;
+    let realPlayerName = playerName;
 
     try {
       const { data, error } = await supabase.rpc('validate_player_intersection', {
-        team_a_id: match.team1_id,
-        team_b_id: match.team2_id,
-        input_name: playerName
+        p_team_a_id: match.team1_id,
+        p_team_b_id: match.team2_id,
+        p_player_name: playerName
       });
 
       if (error) throw error;
-      isCorrect = data === true;
+      
+      // La nuova RPC restituisce un oggetto JSON: { is_valid: boolean, rarity_multiplier: number, player_name: string, ... }
+      if (data && data.is_valid) {
+        isCorrect = true;
+        rarity = data.rarity_multiplier || 1.0;
+        realPlayerName = data.player_name || playerName;
+      }
     } catch (error) {
       console.warn('Errore RPC (forse non esiste ancora), uso fallback:', error);
       // Fallback validation for testing
       if (match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
         const validNames = ['ibrahimovic', 'baggio', 'pirlo', 'cannavaro', 'vidal', 'cancelo', 'seedorf', 'vieri'];
         isCorrect = validNames.some(n => playerName.toLowerCase().includes(n));
+        if (isCorrect) {
+          if (playerName.length >= 15) rarity = 2.5;
+          else if (playerName.length >= 10) rarity = 1.5;
+        }
       }
     }
 
     if (isCorrect) {
+      const timeTaken = (Date.now() - (get().roundStartTime || Date.now())) / 1000;
+      const t = Math.min(Math.max(timeTaken, 0), 10);
+      
+      let combo = 1.0;
+      const currentStreak = get().streak;
+      if (currentStreak === 1) combo = 1.1;
+      else if (currentStreak >= 2) combo = 1.25;
+
+      const roundScore = Math.floor((1000 - 100 * t) * rarity * combo);
+
+      const newPlayerRoundsWon = get().playerRoundsWon + 1;
+      const newStreak = currentStreak + 1;
+      
+      let nextStatus: GameState['status'] = 'won';
+      if (newPlayerRoundsWon >= 2) {
+        nextStatus = 'match_won';
+      }
+
       if (gameChannel && gameMode === 'pvp') {
         gameChannel.send({
           type: 'broadcast',
           event: 'player_won',
-          payload: { playerId }
+          payload: { playerId, roundScore, nextStatus }
         });
       }
-      set((state) => ({ score: state.score + 1, status: 'won' }));
+      
+      set((state) => ({ 
+        score: state.score + roundScore, 
+        status: nextStatus,
+        playerRoundsWon: newPlayerRoundsWon,
+        streak: newStreak,
+        lastScoreAdded: roundScore,
+        lastRarity: rarity,
+        lastCombo: combo,
+        correctAnswer: realPlayerName
+      }));
       return true;
     } else {
+      set({ streak: 0 });
       return false;
     }
   },
@@ -374,7 +452,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.status !== 'playing') return state;
       const newTime = state.timeLeft - 1;
       if (newTime <= 0) {
-        return { timeLeft: 0, status: 'lost' };
+        return { timeLeft: 0, status: 'lost', streak: 0 };
       }
       return { timeLeft: newTime };
     });
@@ -385,7 +463,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (gameChannel) supabase.removeChannel(gameChannel);
     if (matchmakingChannel) supabase.removeChannel(matchmakingChannel);
     
-    set({ status: 'idle', score: 0, timeLeft: gameMode === 'ai' ? 15 : 10, match: null, gameChannel: null, matchmakingChannel: null });
+    set({ 
+      status: 'idle', 
+      score: 0, 
+      timeLeft: gameMode === 'ai' ? 15 : 10, 
+      match: null, 
+      gameChannel: null, 
+      matchmakingChannel: null,
+      round: 0,
+      playerRoundsWon: 0,
+      opponentRoundsWon: 0,
+      streak: 0,
+      isHost: false
+    });
   },
 
   setStatus: (status) => set({ status }),
