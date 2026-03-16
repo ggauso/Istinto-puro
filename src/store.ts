@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { useAuthStore } from './authStore';
 
 export interface Team {
   id: number;
@@ -46,6 +47,7 @@ interface GameState {
   fetchMatchAndBroadcast: () => Promise<void>;
   validatePlayer: (playerName: string) => Promise<boolean>;
   tickTimer: () => void;
+  abandonMatch: () => void;
   resetGame: () => void;
   setStatus: (status: GameState['status']) => void;
 }
@@ -182,10 +184,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           let nextStatus: GameState['status'] = 'opponent_won';
           if (newOpponentRoundsWon >= 2) {
             nextStatus = 'match_lost';
+            useAuthStore.getState().updateProfileStats(false, get().score);
           }
           set({ 
             status: nextStatus, 
             opponentRoundsWon: newOpponentRoundsWon,
+            streak: 0
+          });
+        }
+      })
+      .on('broadcast', { event: 'opponent_abandoned' }, (payload) => {
+        if (payload.payload.playerId !== get().playerId) {
+          useAuthStore.getState().updateProfileStats(true, get().score + 50);
+          set({ 
+            status: 'match_won', 
+            playerRoundsWon: 2,
             streak: 0
           });
         }
@@ -377,21 +390,32 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     try {
       const { data, error } = await supabase.rpc('validate_player_intersection', {
-        p_team_a_id: match.team1_id,
-        p_team_b_id: match.team2_id,
-        p_player_name: playerName
+        team_a_id: match.team1_id,
+        team_b_id: match.team2_id,
+        input_name: playerName
       });
 
       if (error) throw error;
       
-      // La nuova RPC restituisce un oggetto JSON: { is_valid: boolean, rarity_multiplier: number, player_name: string, ... }
-      if (data && data.is_valid) {
+      // Handle both boolean return (old RPC), object return, and array of objects (from RETURNS TABLE)
+      if (data === true) {
         isCorrect = true;
-        rarity = data.rarity_multiplier || 1.0;
-        realPlayerName = data.player_name || playerName;
+      } else if (Array.isArray(data) && data.length > 0 && data[0].valid) {
+        isCorrect = true;
+        rarity = 1.0 + (data[0].similarity_score || 0); // Use similarity as a small rarity boost
+        realPlayerName = data[0].player_name || playerName;
+      } else if (data && !Array.isArray(data) && (data as any).is_valid) {
+        isCorrect = true;
+        rarity = (data as any).rarity_multiplier || 1.0;
+        realPlayerName = (data as any).player_name || playerName;
+      }
+      
+      // If RPC returned empty but we are using fallback match, use fallback validation
+      if (!isCorrect && match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
+        throw new Error('Fallback to local validation');
       }
     } catch (error) {
-      console.warn('Errore RPC (forse non esiste ancora), uso fallback:', error);
+      console.warn('Errore RPC o match di fallback, uso validazione locale:', error);
       // Fallback validation for testing
       if (match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
         const validNames = ['ibrahimovic', 'baggio', 'pirlo', 'cannavaro', 'vidal', 'cancelo', 'seedorf', 'vieri'];
@@ -420,6 +444,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let nextStatus: GameState['status'] = 'won';
       if (newPlayerRoundsWon >= 2) {
         nextStatus = 'match_won';
+        useAuthStore.getState().updateProfileStats(true, get().score + roundScore);
       }
 
       if (gameChannel && gameMode === 'pvp') {
@@ -452,10 +477,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.status !== 'playing') return state;
       const newTime = state.timeLeft - 1;
       if (newTime <= 0) {
+        if (state.gameMode === 'ai') {
+          useAuthStore.getState().updateProfileStats(false, state.score);
+        }
         return { timeLeft: 0, status: 'lost', streak: 0 };
       }
       return { timeLeft: newTime };
     });
+  },
+
+  abandonMatch: () => {
+    const { status, gameMode, gameChannel, playerId, score } = get();
+    const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
+    
+    if (!isGameOver) {
+      if (gameMode === 'pvp') {
+        if (gameChannel) {
+          gameChannel.send({
+            type: 'broadcast',
+            event: 'opponent_abandoned',
+            payload: { playerId }
+          });
+        }
+        // Penalità di 50 punti per abbandono in PvP
+        useAuthStore.getState().updateProfileStats(false, -50);
+      } else if (gameMode === 'ai') {
+        // Nessuna penalità extra per l'IA, solo i punti attuali
+        useAuthStore.getState().updateProfileStats(false, score);
+      }
+    }
+    
+    get().resetGame();
   },
 
   resetGame: () => {

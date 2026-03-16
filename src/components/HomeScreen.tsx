@@ -19,7 +19,7 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
-  const { findMatch, status, selectedLeague, setSelectedLeague, gameMode, setGameMode } = useGameStore();
+  const { findMatch, status, selectedLeague, setSelectedLeague, gameMode, setGameMode, resetGame } = useGameStore();
   const { user, profile } = useAuthStore();
 
   return (
@@ -74,6 +74,12 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
           <div className="mt-8 flex flex-col items-center space-y-4">
             <Loader2 className="animate-spin text-[#FFD700]" size={48} />
             <p className="text-[#FFD700] font-bold animate-pulse text-xl">Ricerca avversario...</p>
+            <button
+              onClick={resetGame}
+              className="mt-4 px-6 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-full font-bold transition-colors border border-red-500/30"
+            >
+              Annulla Ricerca
+            </button>
           </div>
         ) : (
           <div className="mt-8 flex flex-col items-center space-y-6 w-full max-w-xs">
