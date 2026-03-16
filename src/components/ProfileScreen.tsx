@@ -23,8 +23,12 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     );
   }
 
-  const winRate = profile.matches_played > 0 
-    ? Math.round((profile.matches_won / profile.matches_played) * 100) 
+  const matchesPlayed = profile.matches_played || 0;
+  const matchesWon = profile.matches_won || 0;
+  const totalScore = profile.total_score || 0;
+
+  const winRate = matchesPlayed > 0 
+    ? Math.round((matchesWon / matchesPlayed) * 100) 
     : 0;
 
   return (
@@ -83,7 +87,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
           Statistiche
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -93,7 +97,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center mb-3">
               <Target className="w-6 h-6 text-blue-400" />
             </div>
-            <span className="text-4xl font-black mb-1">{profile.matches_played}</span>
+            <span className="text-4xl font-black mb-1">{matchesPlayed}</span>
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Partite Giocate</span>
           </motion.div>
 
@@ -106,7 +110,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <div className="w-12 h-12 bg-[#FFD700]/20 rounded-full flex items-center justify-center mb-3">
               <Medal className="w-6 h-6 text-[#FFD700]" />
             </div>
-            <span className="text-4xl font-black mb-1">{profile.matches_won}</span>
+            <span className="text-4xl font-black mb-1">{matchesWon}</span>
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Vittorie</span>
           </motion.div>
 
@@ -121,6 +125,19 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             </div>
             <span className="text-4xl font-black mb-1">{winRate}%</span>
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Win Rate</span>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.4 }}
+            className="bg-[#1E1E1E] rounded-2xl p-6 border border-white/5 flex flex-col items-center justify-center text-center"
+          >
+            <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center mb-3">
+              <Trophy className="w-6 h-6 text-purple-400" />
+            </div>
+            <span className="text-4xl font-black mb-1">{totalScore}</span>
+            <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Punti Totali</span>
           </motion.div>
         </div>
       </div>

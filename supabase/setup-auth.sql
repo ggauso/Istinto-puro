@@ -27,15 +27,26 @@ CREATE POLICY "Users can insert their own profile." ON public.profiles
 CREATE POLICY "Users can update own profile." ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
--- 4. Create a trigger to automatically create a profile for new users (useful for Google OAuth)
+-- 4. Create a trigger to automatically create a profile for new users (useful for Google OAuth and Email Auth)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, first_name, last_name, avatar_url)
+  INSERT INTO public.profiles (
+    id, 
+    first_name, 
+    last_name, 
+    birth_date, 
+    favorite_team, 
+    privacy_accepted, 
+    avatar_url
+  )
   VALUES (
     new.id,
-    new.raw_user_meta_data->>'full_name',
-    '',
+    COALESCE(new.raw_user_meta_data->>'first_name', new.raw_user_meta_data->>'full_name', ''),
+    COALESCE(new.raw_user_meta_data->>'last_name', ''),
+    NULLIF(new.raw_user_meta_data->>'birth_date', '')::DATE,
+    new.raw_user_meta_data->>'favorite_team',
+    COALESCE((new.raw_user_meta_data->>'privacy_accepted')::BOOLEAN, false),
     new.raw_user_meta_data->>'avatar_url'
   );
   RETURN new;

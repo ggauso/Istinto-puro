@@ -26,6 +26,7 @@ interface AuthState {
   initialize: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
+  updateProfileStats: (isWin: boolean, score: number) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -82,5 +83,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ user: null, profile: null });
+  },
+
+  updateProfileStats: async (isWin: boolean, score: number) => {
+    const { user, profile } = get();
+    if (!user || !profile) return;
+
+    try {
+      const newMatchesPlayed = (profile.matches_played || 0) + 1;
+      const newMatchesWon = (profile.matches_won || 0) + (isWin ? 1 : 0);
+      const newTotalScore = (profile.total_score || 0) + score;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          matches_played: newMatchesPlayed,
+          matches_won: newMatchesWon,
+          total_score: newTotalScore,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error updating profile stats:', error);
+        return;
+      }
+
+      set({
+        profile: {
+          ...profile,
+          matches_played: newMatchesPlayed,
+          matches_won: newMatchesWon,
+          total_score: newTotalScore
+        }
+      });
+    } catch (error) {
+      console.error('Error in updateProfileStats:', error);
+    }
   }
 }));

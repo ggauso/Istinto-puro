@@ -1,16 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
 import { CircularTimer } from './CircularTimer';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Home, Flag } from 'lucide-react';
 
 export function GameScreen() {
   const { 
     match, score, timeLeft, status, validatePlayer, tickTimer, 
     fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer,
-    round, playerRoundsWon, opponentRoundsWon, streak, lastScoreAdded, lastRarity, lastCombo, isHost
+    round, playerRoundsWon, opponentRoundsWon, streak, lastScoreAdded, lastRarity, lastCombo, isHost,
+    abandonMatch
   } = useGameStore();
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
+  const [showAbandonModal, setShowAbandonModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,6 +59,7 @@ export function GameScreen() {
   if (!match) return null;
 
   const totalTime = gameMode === 'ai' ? 15 : 10;
+  const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 font-sans">
@@ -70,24 +74,46 @@ export function GameScreen() {
         )}
       </div>
 
-      {gameMode === 'pvp' && (
-        <div className="absolute top-4 right-4 flex flex-col items-end">
-          <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
-          <div className="flex items-center space-x-2 mt-1">
-            <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 1 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
-            <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 2 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
-            <span className="text-zinc-500 mx-2">-</span>
-            <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 2 ? 'bg-red-500' : 'bg-zinc-700'}`} />
-            <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 1 ? 'bg-red-500' : 'bg-zinc-700'}`} />
-          </div>
+      <div className="absolute top-4 right-4 flex flex-col items-end gap-2 z-50">
+        <div className="flex gap-2">
+          {!isGameOver ? (
+            <button
+              onClick={() => setShowAbandonModal(true)}
+              className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors bg-black/50 px-3 py-2 rounded-full backdrop-blur-sm border border-red-500/20"
+            >
+              <Flag className="w-4 h-4" />
+              <span className="text-sm font-bold">Abbandona</span>
+            </button>
+          ) : (
+            <button
+              onClick={resetGame}
+              className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors bg-black/50 px-3 py-2 rounded-full backdrop-blur-sm border border-white/10"
+            >
+              <Home className="w-4 h-4" />
+              <span className="text-sm font-bold">Home</span>
+            </button>
+          )}
         </div>
-      )}
 
-      {gameMode === 'ai' && (
-        <div className="absolute top-4 right-4 flex flex-col items-end">
-          <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
-        </div>
-      )}
+        {gameMode === 'pvp' && (
+          <div className="flex flex-col items-end mt-2">
+            <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
+            <div className="flex items-center space-x-2 mt-1">
+              <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 1 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+              <div className={`w-3 h-3 rounded-full ${playerRoundsWon >= 2 ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+              <span className="text-zinc-500 mx-2">-</span>
+              <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 2 ? 'bg-red-500' : 'bg-zinc-700'}`} />
+              <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 1 ? 'bg-red-500' : 'bg-zinc-700'}`} />
+            </div>
+          </div>
+        )}
+
+        {gameMode === 'ai' && (
+          <div className="flex flex-col items-end mt-2">
+            <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col items-center space-y-8 w-full max-w-md">
         <CircularTimer timeLeft={timeLeft} totalTime={totalTime} />
@@ -241,6 +267,50 @@ export function GameScreen() {
           </motion.div>
         )}
       </div>
+
+      <AnimatePresence>
+        {showAbandonModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#1E1E1E] border border-red-500/30 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl"
+            >
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Flag className="w-8 h-8 text-red-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Abbandonare?</h2>
+              <p className="text-zinc-400 mb-6">
+                Sei sicuro di voler abbandonare la partita? 
+                {gameMode === 'pvp' ? ' Subirai una penalità di 50 punti.' : ' Perderai i progressi attuali.'}
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setShowAbandonModal(false);
+                    abandonMatch();
+                  }}
+                  className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors"
+                >
+                  Sì, Abbandona
+                </button>
+                <button
+                  onClick={() => setShowAbandonModal(false)}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition-colors"
+                >
+                  Annulla
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

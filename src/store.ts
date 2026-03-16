@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { useAuthStore } from './authStore';
 
 export interface Team {
   id: number;
@@ -46,6 +47,7 @@ interface GameState {
   fetchMatchAndBroadcast: () => Promise<void>;
   validatePlayer: (playerName: string) => Promise<boolean>;
   tickTimer: () => void;
+  abandonMatch: () => void;
   resetGame: () => void;
   setStatus: (status: GameState['status']) => void;
 }
@@ -182,10 +184,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           let nextStatus: GameState['status'] = 'opponent_won';
           if (newOpponentRoundsWon >= 2) {
             nextStatus = 'match_lost';
+            useAuthStore.getState().updateProfileStats(false, get().score);
           }
           set({ 
             status: nextStatus, 
             opponentRoundsWon: newOpponentRoundsWon,
+            streak: 0
+          });
+        }
+      })
+      .on('broadcast', { event: 'opponent_abandoned' }, (payload) => {
+        if (payload.payload.playerId !== get().playerId) {
+          useAuthStore.getState().updateProfileStats(true, get().score + 50);
+          set({ 
+            status: 'match_won', 
+            playerRoundsWon: 2,
             streak: 0
           });
         }
@@ -420,6 +433,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let nextStatus: GameState['status'] = 'won';
       if (newPlayerRoundsWon >= 2) {
         nextStatus = 'match_won';
+        useAuthStore.getState().updateProfileStats(true, get().score + roundScore);
       }
 
       if (gameChannel && gameMode === 'pvp') {
@@ -452,10 +466,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.status !== 'playing') return state;
       const newTime = state.timeLeft - 1;
       if (newTime <= 0) {
+        if (state.gameMode === 'ai') {
+          useAuthStore.getState().updateProfileStats(false, state.score);
+        }
         return { timeLeft: 0, status: 'lost', streak: 0 };
       }
       return { timeLeft: newTime };
     });
+  },
+
+  abandonMatch: () => {
+    const { status, gameMode, gameChannel, playerId, score } = get();
+    const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
+    
+    if (!isGameOver) {
+      if (gameMode === 'pvp') {
+        if (gameChannel) {
+          gameChannel.send({
+            type: 'broadcast',
+            event: 'opponent_abandoned',
+            payload: { playerId }
+          });
+        }
+        // Penalità di 50 punti per abbandono in PvP
+        useAuthStore.getState().updateProfileStats(false, -50);
+      } else if (gameMode === 'ai') {
+        // Nessuna penalità extra per l'IA, solo i punti attuali
+        useAuthStore.getState().updateProfileStats(false, score);
+      }
+    }
+    
+    get().resetGame();
   },
 
   resetGame: () => {
