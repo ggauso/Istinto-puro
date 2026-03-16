@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useAuthStore } from '../authStore';
-import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock } from 'lucide-react';
+import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ProfileScreenProps {
@@ -24,6 +24,8 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const passwordRequestInFlight = useRef(false);
 
   const { changePassword } = useAuthStore();
 
@@ -50,6 +52,8 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (passwordRequestInFlight.current || isSavingPassword || passwordSuccess) return;
+
     if (!passwordForm.newPassword) {
       setPasswordError('Inserisci la nuova password');
       return;
@@ -59,13 +63,19 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
       return;
     }
 
+    passwordRequestInFlight.current = true;
+    setIsSavingPassword(true);
+    setPasswordError(null);
+    setPasswordSuccess(false);
+
     try {
-      setIsSavingPassword(true);
-      setPasswordError(null);
-      setPasswordSuccess(false);
       await changePassword(passwordForm.newPassword);
+
+      // Successo (200): mostra feedback positivo all'utente
       setPasswordSuccess(true);
       setPasswordForm({ oldPassword: '', newPassword: '' });
+      
+      // Chiudi il pannello dopo 3 secondi
       setTimeout(() => {
         setIsChangingPassword(false);
         setPasswordSuccess(false);
@@ -74,7 +84,9 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
       console.error('Error changing password:', error);
       setPasswordError(error.message || 'Errore durante il cambio password');
     } finally {
+      // Spegne sempre il loading del pulsante, anche con risposta 200
       setIsSavingPassword(false);
+      passwordRequestInFlight.current = false;
     }
   };
 
@@ -325,14 +337,21 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
                     <input
-                      type="password"
+                      type={showNewPwd ? 'text' : 'password'}
                       value={passwordForm.newPassword}
                       onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl pl-10 pr-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl pl-10 pr-12 py-2 text-white focus:outline-none focus:border-[#FFD700]"
                       placeholder="••••••••"
                       required
                       minLength={6}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPwd(!showNewPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                    >
+                      {showNewPwd ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -365,10 +384,16 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                 <button
                   type="submit"
                   disabled={isSavingPassword || passwordSuccess}
-                  className="flex-1 bg-[#FFD700] text-black font-bold py-3 rounded-xl hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  className={`flex-1 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed ${
+                    passwordSuccess
+                      ? 'bg-green-500 text-white'
+                      : 'bg-[#FFD700] text-black hover:bg-yellow-400 disabled:opacity-50'
+                  }`}
                 >
                   {isSavingPassword ? (
                     <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-black"></div>
+                  ) : passwordSuccess ? (
+                    '✓ Password Aggiornata!'
                   ) : (
                     'Aggiorna Password'
                   )}

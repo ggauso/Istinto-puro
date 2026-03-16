@@ -1,30 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogIn, UserPlus, ArrowLeft, Mail, Lock, User, Calendar, Shield, Trophy } from 'lucide-react';
+import { LogIn, UserPlus, ArrowLeft, Mail, Lock, User, Calendar, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface AuthScreenProps {
   onBack: () => void;
+  isPasswordRecovery?: boolean;
+  onPasswordRecoveryDone?: () => void;
 }
 
-export function AuthScreen({ onBack }: AuthScreenProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone }: AuthScreenProps) {
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot_password' | 'update_password'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
 
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [favoriteTeam, setFavoriteTeam] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
+  // Visibilità campi password
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Se arriva da un link di recupero password, imposta subito la modalità aggiornamento
+  useEffect(() => {
+    if (isPasswordRecovery) {
+      setMode('update_password');
+    }
+  }, [isPasswordRecovery]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMsg(null);
 
     try {
       if (mode === 'register') {
@@ -50,11 +69,54 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
         
         // If email confirmation is required, inform the user
         if (data.user && data.session === null) {
-          alert('Controlla la tua email per confermare la registrazione!');
+          setSuccessMsg('Controlla la tua email per confermare la registrazione!');
           setMode('login');
         } else {
           onBack(); // Go back to home after successful login
         }
+      } else if (mode === 'forgot_password') {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        
+        if (resetError) throw resetError;
+        setSuccessMsg('Ti abbiamo inviato un link per il recupero della password. Controlla la tua email.');
+      } else if (mode === 'update_password') {
+        // Aggiornamento della password dopo aver cliccato il link di recupero.
+        if (newPassword !== confirmPassword) {
+          throw new Error('Le password non corrispondono.');
+        }
+        if (newPassword.length < 6) {
+          throw new Error('La password deve essere di almeno 6 caratteri.');
+        }
+        const { data, error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+        if (updateError) {
+          const msg = updateError.message.toLowerCase();
+          
+          // Ignoriamo l'errore del Lock client-side (spesso causato da sync storage)
+          if (msg.includes('lock broken')) {
+            console.warn('Ignoring client-side lock error in recovery as server update reached.');
+          } else {
+            // Errore 422: la nuova password è identica a quella precedente
+            const isIdentical = updateError.status === 422 || 
+                              msg.includes('different') || 
+                              msg.includes('identical') ||
+                              msg.includes('same as the old');
+
+            if (isIdentical) {
+              throw new Error('La nuova password deve essere diversa da quella attuale.');
+            }
+            throw updateError;
+          }
+        }
+        // Successo: ferma immediatamente lo spinner e mostra la conferma verde
+        setLoading(false);
+        setUpdateSuccess(true);
+        setSuccessMsg('Password aggiornata con successo! Reindirizzamento...');
+        setTimeout(() => {
+          onPasswordRecoveryDone?.();
+        }, 2000);
+        return; // evitiamo il finally che rimette a posto lo stato
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -101,15 +163,24 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
         </button>
 
         <h2 className="text-3xl font-bold mb-2 text-center">
-          {mode === 'login' ? 'Bentornato' : 'Crea Account'}
+          {mode === 'login' ? 'Bentornato' : mode === 'register' ? 'Crea Account' : mode === 'forgot_password' ? 'Recupero Password' : 'Nuova Password'}
         </h2>
         <p className="text-gray-400 text-center mb-8">
-          {mode === 'login' ? 'Accedi per salvare i tuoi progressi' : 'Unisciti alla community di Istinto Puro'}
+          {mode === 'login' ? 'Accedi per salvare i tuoi progressi' 
+            : mode === 'register' ? 'Unisciti alla community di Istinto Puro' 
+            : mode === 'forgot_password' ? 'Inserisci la tua email per ricevere un link di recupero'
+            : 'Scegli una nuova password per il tuo account'}
         </p>
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg mb-6 text-sm">
             {error}
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="bg-green-500/10 border border-green-500/50 text-green-400 p-3 rounded-lg mb-6 text-sm">
+            {successMsg}
           </div>
         )}
 
@@ -177,36 +248,100 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input 
-                type="email" 
-                required 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
-                placeholder="tu@email.com"
-              />
+          {mode !== 'update_password' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input 
+                  type="email" 
+                  required 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
+                  placeholder="tu@email.com"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input 
-                type="password" 
-                required 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
-                placeholder="••••••••"
-                minLength={6}
-              />
+          {/* Sezione Nuova Password (Recovery callback) */}
+          {mode === 'update_password' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Nuova Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 focus:outline-none focus:border-[#FFD700] transition-colors"
+                    placeholder="••••••••"
+                    minLength={6}
+                  />
+                  <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                    {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Conferma Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 focus:outline-none focus:border-[#FFD700] transition-colors"
+                    placeholder="••••••••"
+                    minLength={6}
+                  />
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {(mode === 'login' || mode === 'register') && (
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-400">Password</label>
+                {mode === 'login' && (
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                        setMode('forgot_password');
+                        setError(null);
+                        setSuccessMsg(null);
+                    }}
+                    className="text-xs text-[#FFD700] hover:underline"
+                  >
+                    Password dimenticata?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input 
+                  type={showPassword ? 'text' : 'password'}
+                  required={mode !== 'forgot_password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 focus:outline-none focus:border-[#FFD700] transition-colors"
+                  placeholder="••••••••"
+                  minLength={6}
+                />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {mode === 'register' && (
             <div className="flex items-start gap-3 mt-4">
@@ -228,10 +363,19 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
 
           <button 
             type="submit" 
-            disabled={loading}
-            className="w-full bg-[#FFD700] text-black font-bold py-3 px-4 rounded-xl hover:bg-yellow-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-6 flex items-center justify-center gap-2"
+            disabled={loading || updateSuccess}
+            className={`w-full font-bold py-3 px-4 rounded-xl transition-all mt-6 flex items-center justify-center gap-2 disabled:cursor-not-allowed ${
+              updateSuccess
+                ? 'bg-green-500 text-white'
+                : 'bg-[#FFD700] text-black hover:bg-yellow-400 disabled:opacity-50'
+            }`}
           >
-            {loading ? 'Caricamento...' : (mode === 'login' ? 'Accedi' : 'Registrati')}
+            {loading
+              ? 'Caricamento...'
+              : updateSuccess
+              ? '✓ Password Aggiornata!'
+              : (mode === 'login' ? 'Accedi' : mode === 'register' ? 'Registrati' : mode === 'forgot_password' ? 'Invia Link di Recupero' : 'Salva Nuova Password')
+            }
           </button>
         </form>
 
@@ -256,9 +400,13 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
         </button>
 
         <p className="text-center mt-8 text-gray-400 text-sm">
-          {mode === 'login' ? 'Non hai un account? ' : 'Hai già un account? '}
+          {mode === 'login' ? 'Non hai un account? ' : mode === 'register' ? 'Hai già un account? ' : 'Ricordi la password? '}
           <button 
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+            onClick={() => {
+                setMode(mode === 'login' ? 'register' : 'login');
+                setError(null);
+                setSuccessMsg(null);
+            }}
             className="text-[#FFD700] hover:underline font-medium"
           >
             {mode === 'login' ? 'Registrati' : 'Accedi'}

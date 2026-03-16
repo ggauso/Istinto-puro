@@ -29,6 +29,7 @@ interface GameState {
   selectedLeague: number | null;
   gameMode: 'pvp' | 'ai';
   correctAnswer: string | null;
+  recentTeams: number[];
   
   isHost: boolean;
   round: number;
@@ -65,6 +66,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectedLeague: null,
   gameMode: 'pvp',
   correctAnswer: null,
+  recentTeams: [],
   isHost: false,
   round: 0,
   playerRoundsWon: 0,
@@ -252,101 +254,39 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       let matchData: MatchData | null = null;
       let fetchedAnswer: string | null = null;
-      const { selectedLeague } = get();
+      const { selectedLeague, recentTeams } = get();
 
       try {
-        let validTeamIds: number[] | null = null;
-        let teamToLeague: Record<number, number> = {};
-        
-        const { data: allTeamsData, error: allTeamsError } = await supabase
-          .from('teams')
-          .select('id, league_id');
-          
-        if (!allTeamsError && allTeamsData) {
-          allTeamsData.forEach(t => {
-            teamToLeague[t.id] = t.league_id;
-          });
-          if (selectedLeague) {
-            validTeamIds = allTeamsData.filter(t => t.league_id === selectedLeague).map(t => t.id);
-          }
-        }
-
-        // Fetch all player_teams to find a valid pair
-        const { data: ptData, error: ptError } = await supabase
-          .from('player_teams')
-          .select('player_id, team_id');
-          
-        if (ptError) throw ptError;
-
-        // Group by player_id
-        const playerToTeams: Record<number, number[]> = {};
-        (ptData || []).forEach((pt) => {
-          if (!validTeamIds || validTeamIds.includes(pt.team_id)) {
-            if (!playerToTeams[pt.player_id]) playerToTeams[pt.player_id] = [];
-            playerToTeams[pt.player_id].push(pt.team_id);
-          }
+        // Call the new RPC function to get a completely random match
+        // with cross-league constraints (if applicable) and team exclusion logic.
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_random_match', {
+          p_league_id: selectedLeague,
+          p_recent_teams: recentTeams
         });
 
-        // Find players with at least 2 teams
-        const validPlayers = Object.keys(playerToTeams).filter(
-          (pid) => playerToTeams[Number(pid)].length >= 2
-        );
+        if (rpcError) throw rpcError;
 
-        if (validPlayers.length > 0) {
-          // Pick a random player
-          const randomPlayerId = Number(validPlayers[Math.floor(Math.random() * validPlayers.length)]);
-          const teamsForPlayer = playerToTeams[randomPlayerId];
-
-          // Pick 2 random teams from this player's history
-          const shuffledTeams = teamsForPlayer.sort(() => 0.5 - Math.random());
-          let team1Id = shuffledTeams[0];
-          let team2Id = shuffledTeams[1];
-
-          // In "Tutti i Campionati" mode, try to pick teams from different leagues to mix it up
-          if (!selectedLeague) {
-            const t1League = teamToLeague[team1Id];
-            const differentLeagueTeam = shuffledTeams.find(t => teamToLeague[t] !== t1League);
-            if (differentLeagueTeam) {
-              team2Id = differentLeagueTeam;
-            }
-          }
-
-          // Fetch team details
-          const { data: teamsData, error: teamsError } = await supabase
-            .from('teams')
-            .select('*')
-            .in('id', [team1Id, team2Id]);
-
-          if (teamsError || !teamsData || teamsData.length < 2) throw teamsError;
-
-          const t1 = teamsData.find(t => t.id === team1Id)!;
-          const t2 = teamsData.find(t => t.id === team2Id)!;
-
+        if (rpcData && rpcData.length > 0) {
+          const m = rpcData[0];
           matchData = {
-            team1_id: t1.id,
-            team1_name: t1.name,
-            team1_logo: t1.logo_url,
-            team2_id: t2.id,
-            team2_name: t2.name,
-            team2_logo: t2.logo_url,
+            team1_id: m.team1_id,
+            team1_name: m.team1_name,
+            team1_logo: m.team1_logo,
+            team2_id: m.team2_id,
+            team2_name: m.team2_name,
+            team2_logo: m.team2_logo,
           };
+          fetchedAnswer = m.player_name;
 
-          // Fetch the player's name for the correct answer
-          const { data: playerData } = await supabase
-            .from('players')
-            .select('name')
-            .eq('id', randomPlayerId)
-            .single();
-            
-          if (playerData) {
-            fetchedAnswer = playerData.name;
-          }
+          // Update recent teams to avoid picking them again soon
+          const newRecentTeams = [...recentTeams, m.team1_id, m.team2_id].slice(-20); // Keep last 20 teams
+          set({ recentTeams: newRecentTeams });
         } else {
-          throw new Error('Nessun match valido trovato nel database');
+          throw new Error('Nessun match valido trovato tramite RPC');
         }
       } catch (dbError) {
-        console.warn('Database vuoto o errore RLS, uso dati di fallback:', dbError);
-        // Fallback data if DB is empty so we can still test multiplayer
+        console.warn('RPC fallita o database vuoto, uso dati di fallback:', dbError);
+        // Fallback data se l'RPC fallisce (es. se la migration non è ancora stata applicata)
         matchData = {
           team1_id: 496,
           team1_name: 'Juventus',

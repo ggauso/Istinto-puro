@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from './store';
 import { useAuthStore } from './authStore';
+import { supabase } from './lib/supabase';
 import { HomeScreen } from './components/HomeScreen';
 import { GameScreen } from './components/GameScreen';
 import { AuthScreen } from './components/AuthScreen';
@@ -15,9 +16,22 @@ export default function App() {
   const { status } = useGameStore();
   const { initialize, loading } = useAuthStore();
   const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile'>('home');
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     initialize();
+
+    // Intercetta il callback del link di recupero password inviato da Supabase.
+    // Quando l'utente clicca il link, Supabase emette PASSWORD_RECOVERY prima di autenticarlo.
+    // In questo momento forziamo la schermata di reset invece di permettere l'accesso normale.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        setCurrentScreen('auth');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [initialize]);
 
   if (loading) {
@@ -39,7 +53,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-[#FFD700] selection:text-black">
-      {currentScreen === 'auth' && <AuthScreen onBack={() => setCurrentScreen('home')} />}
+      {currentScreen === 'auth' && <AuthScreen 
+        onBack={() => setCurrentScreen('home')} 
+        isPasswordRecovery={isPasswordRecovery}
+        onPasswordRecoveryDone={() => {
+          setIsPasswordRecovery(false);
+          setCurrentScreen('home');
+        }}
+      />}
       {currentScreen === 'profile' && <ProfileScreen onBack={() => setCurrentScreen('home')} />}
       {currentScreen === 'home' && (
         <HomeScreen 

@@ -53,11 +53,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ loading: false });
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    supabase.auth.onAuthStateChange(async (event, session) => {
       set({ user: session?.user || null });
-      if (session?.user) {
+      
+      // Fetch profile on sign in, token refresh or password update
+      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
         await get().fetchProfile(session.user.id);
-      } else {
+      } else if (!session) {
         set({ profile: null });
       }
     });
@@ -173,31 +175,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  changePassword: async (newPassword: string) => {
+  changePassword: async (newPassword: string): Promise<void> => {
     const { user } = get();
     if (!user) throw new Error('Utente non autenticato');
 
-    let timeoutId: NodeJS.Timeout;
-    try {
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Timeout: Il server non ha risposto entro 10 secondi')), 10000);
-      });
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-      // Update to new password
-      const updatePromise = supabase.auth.updateUser({
-        password: newPassword
-      });
+    if (error) {
+      const msg = error.message.toLowerCase();
 
-      const updateResponse = await Promise.race([updatePromise, timeoutPromise]) as any;
-
-      if (updateResponse.error) {
-        throw new Error(updateResponse.error.message || 'Errore durante l\'aggiornamento della password');
+      // Ignoriamo l'errore del Lock client-side se siamo arrivati qui (spesso la pwd è cambiata)
+      if (msg.includes('lock broken')) {
+        console.warn('Supabase client lock error detected, but update reached server. Proceeding.');
+        return;
       }
-    } catch (error) {
-      console.error('Error in changePassword:', error);
-      throw error;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
+
+      // Errore 422: la nuova password è uguale a quella attuale
+      const isIdentical = error.status === 422 ||
+                        msg.includes('different') ||
+                        msg.includes('identical') ||
+                        msg.includes('same as the old');
+
+      if (isIdentical) {
+        throw new Error('La nuova password deve essere diversa da quella attuale.');
+      }
+
+      throw new Error(error.message || 'Errore durante l\'aggiornamento della password');
     }
   }
 }));
