@@ -27,6 +27,8 @@ interface AuthState {
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
   updateProfileStats: (isWin: boolean, score: number) => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -119,6 +121,83 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     } catch (error) {
       console.error('Error in updateProfileStats:', error);
+    }
+  },
+
+  updateProfile: async (updates: Partial<Profile>) => {
+    const { user, profile } = get();
+    if (!user || !profile) {
+      console.log('No user or profile in updateProfile');
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    try {
+      console.log('Calling Supabase update with:', updates);
+      
+      // Convert empty strings to null for database consistency
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).map(([k, v]) => [k, v === '' ? null : v])
+      );
+
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Timeout: Il server non ha risposto entro 10 secondi')), 10000);
+      });
+
+      const updatePromise = supabase
+        .from('profiles')
+        .update(cleanUpdates)
+        .eq('id', user.id);
+
+      const response = await Promise.race([updatePromise, timeoutPromise]) as any;
+      const { data, error } = response;
+
+      console.log('Supabase update response:', { data, error });
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        throw error;
+      }
+
+      set({
+        profile: {
+          ...profile,
+          ...updates
+        }
+      });
+    } catch (error) {
+      console.error('Error in updateProfile:', error);
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  },
+
+  changePassword: async (newPassword: string) => {
+    const { user } = get();
+    if (!user) throw new Error('Utente non autenticato');
+
+    let timeoutId: NodeJS.Timeout;
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Timeout: Il server non ha risposto entro 10 secondi')), 10000);
+      });
+
+      // Update to new password
+      const updatePromise = supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      const updateResponse = await Promise.race([updatePromise, timeoutPromise]) as any;
+
+      if (updateResponse.error) {
+        throw new Error(updateResponse.error.message || 'Errore durante l\'aggiornamento della password');
+      }
+    } catch (error) {
+      console.error('Error in changePassword:', error);
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 }));

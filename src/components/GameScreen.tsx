@@ -42,6 +42,16 @@ export function GameScreen() {
     }
   }, [status, isHost, gameMode, fetchMatchAndBroadcast]);
 
+  useEffect(() => {
+    const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
+    if (isGameOver) {
+      const timer = setTimeout(() => {
+        resetGame();
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [status, gameMode, resetGame]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || status !== 'playing') return;

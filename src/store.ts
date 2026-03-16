@@ -390,21 +390,32 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     try {
       const { data, error } = await supabase.rpc('validate_player_intersection', {
-        p_team_a_id: match.team1_id,
-        p_team_b_id: match.team2_id,
-        p_player_name: playerName
+        team_a_id: match.team1_id,
+        team_b_id: match.team2_id,
+        input_name: playerName
       });
 
       if (error) throw error;
       
-      // La nuova RPC restituisce un oggetto JSON: { is_valid: boolean, rarity_multiplier: number, player_name: string, ... }
-      if (data && data.is_valid) {
+      // Handle both boolean return (old RPC), object return, and array of objects (from RETURNS TABLE)
+      if (data === true) {
         isCorrect = true;
-        rarity = data.rarity_multiplier || 1.0;
-        realPlayerName = data.player_name || playerName;
+      } else if (Array.isArray(data) && data.length > 0 && data[0].valid) {
+        isCorrect = true;
+        rarity = 1.0 + (data[0].similarity_score || 0); // Use similarity as a small rarity boost
+        realPlayerName = data[0].player_name || playerName;
+      } else if (data && !Array.isArray(data) && (data as any).is_valid) {
+        isCorrect = true;
+        rarity = (data as any).rarity_multiplier || 1.0;
+        realPlayerName = (data as any).player_name || playerName;
+      }
+      
+      // If RPC returned empty but we are using fallback match, use fallback validation
+      if (!isCorrect && match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
+        throw new Error('Fallback to local validation');
       }
     } catch (error) {
-      console.warn('Errore RPC (forse non esiste ancora), uso fallback:', error);
+      console.warn('Errore RPC o match di fallback, uso validazione locale:', error);
       // Fallback validation for testing
       if (match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
         const validNames = ['ibrahimovic', 'baggio', 'pirlo', 'cannavaro', 'vidal', 'cancelo', 'seedorf', 'vieri'];

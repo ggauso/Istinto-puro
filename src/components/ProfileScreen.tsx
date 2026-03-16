@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuthStore } from '../authStore';
-import { ArrowLeft, LogOut, Trophy, Target, Medal, User } from 'lucide-react';
+import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ProfileScreenProps {
@@ -8,11 +8,74 @@ interface ProfileScreenProps {
 }
 
 export function ProfileScreen({ onBack }: ProfileScreenProps) {
-  const { user, profile, signOut } = useAuthStore();
+  const { user, profile, signOut, updateProfile } = useAuthStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    first_name: profile?.first_name || '',
+    last_name: profile?.last_name || '',
+    favorite_team: profile?.favorite_team || '',
+    avatar_url: profile?.avatar_url || ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '' });
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const { changePassword } = useAuthStore();
 
   const handleSignOut = async () => {
     await signOut();
     onBack();
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      console.log('Starting save...', editForm);
+      await updateProfile(editForm);
+      console.log('Save completed');
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('Error in handleSave:', error);
+      setSaveError(error.message || 'Errore durante il salvataggio del profilo');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordForm.newPassword) {
+      setPasswordError('Inserisci la nuova password');
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('La nuova password deve avere almeno 6 caratteri');
+      return;
+    }
+
+    try {
+      setIsSavingPassword(true);
+      setPasswordError(null);
+      setPasswordSuccess(false);
+      await changePassword(passwordForm.newPassword);
+      setPasswordSuccess(true);
+      setPasswordForm({ oldPassword: '', newPassword: '' });
+      setTimeout(() => {
+        setIsChangingPassword(false);
+        setPasswordSuccess(false);
+      }, 3000);
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      setPasswordError(error.message || 'Errore durante il cambio password');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   if (!user || !profile) {
@@ -55,31 +118,123 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-[#1E1E1E] rounded-3xl p-8 shadow-2xl border border-white/5 mb-8"
+          className="bg-[#1E1E1E] rounded-3xl p-8 shadow-2xl border border-white/5 mb-8 relative"
         >
-          <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#FFD700] to-orange-500 p-1">
-              <div className="w-full h-full bg-[#121212] rounded-full flex items-center justify-center overflow-hidden">
-                {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="absolute top-4 right-4 p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white"
+            >
+              <Edit2 className="w-5 h-5" />
+            </button>
+          )}
+
+          {isEditing ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-xl font-bold">Modifica Profilo</h2>
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditForm({
+                      first_name: profile.first_name || '',
+                      last_name: profile.last_name || '',
+                      favorite_team: profile.favorite_team || '',
+                      avatar_url: profile.avatar_url || ''
+                    });
+                  }}
+                  className="p-2 text-zinc-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">Nome</label>
+                  <input
+                    type="text"
+                    value={editForm.first_name}
+                    onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">Cognome</label>
+                  <input
+                    type="text"
+                    value={editForm.last_name}
+                    onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">Squadra del Cuore</label>
+                  <input
+                    type="text"
+                    value={editForm.favorite_team}
+                    onChange={(e) => setEditForm({ ...editForm, favorite_team: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">URL Avatar</label>
+                  <input
+                    type="text"
+                    value={editForm.avatar_url}
+                    onChange={(e) => setEditForm({ ...editForm, avatar_url: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+
+              {saveError && (
+                <div className="mt-2 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm text-center">
+                  {saveError}
+                </div>
+              )}
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="mt-4 w-full bg-[#FFD700] text-black font-bold py-3 rounded-xl hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-black"></div>
                 ) : (
-                  <User className="w-10 h-10 text-[#FFD700]" />
+                  <>
+                    <Save className="w-5 h-5" />
+                    Salva Modifiche
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col md:flex-row items-center gap-6">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#FFD700] to-orange-500 p-1">
+                <div className="w-full h-full bg-[#121212] rounded-full flex items-center justify-center overflow-hidden">
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-10 h-10 text-[#FFD700]" />
+                  )}
+                </div>
+              </div>
+              
+              <div className="text-center md:text-left flex-1">
+                <h1 className="text-3xl font-bold mb-1">
+                  {profile.first_name ? `${profile.first_name} ${profile.last_name || ''}` : user.email?.split('@')[0]}
+                </h1>
+                <p className="text-gray-400 mb-2">{user.email}</p>
+                {profile.favorite_team && (
+                  <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-sm font-medium text-[#FFD700]">
+                    Tifoso: {profile.favorite_team}
+                  </span>
                 )}
               </div>
             </div>
-            
-            <div className="text-center md:text-left flex-1">
-              <h1 className="text-3xl font-bold mb-1">
-                {profile.first_name ? `${profile.first_name} ${profile.last_name || ''}` : user.email?.split('@')[0]}
-              </h1>
-              <p className="text-gray-400 mb-2">{user.email}</p>
-              {profile.favorite_team && (
-                <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-sm font-medium text-[#FFD700]">
-                  Tifoso: {profile.favorite_team}
-                </span>
-              )}
-            </div>
-          </div>
+          )}
         </motion.div>
 
         <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -140,6 +295,88 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Punti Totali</span>
           </motion.div>
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-8 bg-[#1E1E1E] rounded-3xl p-8 shadow-2xl border border-white/5"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Lock className="w-6 h-6 text-[#FFD700]" />
+              Sicurezza
+            </h2>
+            {!isChangingPassword && (
+              <button
+                onClick={() => setIsChangingPassword(true)}
+                className="text-sm font-medium text-[#FFD700] hover:text-yellow-400 transition-colors"
+              >
+                Cambia Password
+              </button>
+            )}
+          </div>
+
+          {isChangingPassword && (
+            <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">Nuova Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                    <input
+                      type="password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl pl-10 pr-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                      placeholder="••••••••"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {passwordError && (
+                <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm text-center">
+                  {passwordError}
+                </div>
+              )}
+
+              {passwordSuccess && (
+                <div className="p-3 bg-green-500/20 border border-green-500/50 rounded-xl text-green-400 text-sm text-center">
+                  Password aggiornata con successo!
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsChangingPassword(false);
+                    setPasswordForm({ oldPassword: '', newPassword: '' });
+                    setPasswordError(null);
+                    setPasswordSuccess(false);
+                  }}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPassword || passwordSuccess}
+                  className="flex-1 bg-[#FFD700] text-black font-bold py-3 rounded-xl hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSavingPassword ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-black"></div>
+                  ) : (
+                    'Aggiorna Password'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+        </motion.div>
       </div>
     </div>
   );
