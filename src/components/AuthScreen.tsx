@@ -89,26 +89,24 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         if (newPassword.length < 6) {
           throw new Error('La password deve essere di almeno 6 caratteri.');
         }
-        const { data, error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+
+        const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout: il server non ha risposto.')), 10000)
+        );
+
+        const { error: updateError } = await Promise.race([
+          supabase.auth.updateUser({ password: newPassword }),
+          timeoutPromise
+        ]);
+
         if (updateError) {
           const msg = updateError.message.toLowerCase();
-          
-          // Ignoriamo l'errore del Lock client-side (spesso causato da sync storage)
-          if (msg.includes('lock broken')) {
-            console.warn('Ignoring client-side lock error in recovery as server update reached.');
-          } else {
-            // Errore 422: la nuova password è identica a quella precedente
-            const isIdentical = updateError.status === 422 || 
-                              msg.includes('different') || 
-                              msg.includes('identical') ||
-                              msg.includes('same as the old');
-
-            if (isIdentical) {
-              throw new Error('La nuova password deve essere diversa da quella attuale.');
-            }
-            throw updateError;
+          if (msg.includes('different') || msg.includes('identical') || msg.includes('same as the old')) {
+            throw new Error('La nuova password deve essere diversa da quella attuale.');
           }
+          throw updateError;
         }
+
         // Successo: ferma immediatamente lo spinner e mostra la conferma verde
         setLoading(false);
         setUpdateSuccess(true);

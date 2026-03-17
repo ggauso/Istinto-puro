@@ -43,7 +43,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async () => {
     if (get().initialized) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    let session = null;
+    try {
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
+      const response = await Promise.race([supabase.auth.getSession(), timeoutPromise]) as any;
+      session = response?.data?.session;
+    } catch (e) {
+      console.warn('getSession timeout during initialize, continuing without session');
+    }
     
     set({ user: session?.user || null, initialized: true });
     
@@ -53,13 +60,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ loading: false });
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      set({ user: session?.user || null });
+    supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      set({ user: currentSession?.user || null });
       
       // Fetch profile on sign in, token refresh or password update
-      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
-        await get().fetchProfile(session.user.id);
-      } else if (!session) {
+      if (currentSession?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
+        await get().fetchProfile(currentSession.user.id);
+      } else if (!currentSession) {
         set({ profile: null });
       }
     });
@@ -85,8 +92,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ user: null, profile: null });
+    try {
+      set({ loading: true });
+      const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout: il server non ha risposto.')), 5000)
+      );
+      await Promise.race([
+        supabase.auth.signOut(),
+        timeoutPromise
+      ]);
+    } catch (error) {
+      console.error('SignOut error:', error);
+    } finally {
+      set({ user: null, profile: null, loading: false });
+    }
   },
 
   updateProfileStats: async (isWin: boolean, score: number) => {
@@ -179,28 +198,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { user } = get();
     if (!user) throw new Error('Utente non autenticato');
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout: il server non ha risposto.')), 10000)
+    );
+
+    const { data, error } = await Promise.race([
+      supabase.auth.updateUser({ password: newPassword }),
+      timeoutPromise
+    ]);
 
     if (error) {
       const msg = error.message.toLowerCase();
-
-      // Ignoriamo l'errore del Lock client-side se siamo arrivati qui (spesso la pwd è cambiata)
-      if (msg.includes('lock broken')) {
-        console.warn('Supabase client lock error detected, but update reached server. Proceeding.');
-        return;
-      }
-
-      // Errore 422: la nuova password è uguale a quella attuale
-      const isIdentical = error.status === 422 ||
-                        msg.includes('different') ||
-                        msg.includes('identical') ||
-                        msg.includes('same as the old');
-
-      if (isIdentical) {
+      if (msg.includes('different') || msg.includes('identical') || msg.includes('same as the old')) {
         throw new Error('La nuova password deve essere diversa da quella attuale.');
       }
-
-      throw new Error(error.message || 'Errore durante l\'aggiornamento della password');
+      throw error;
     }
   }
 }));

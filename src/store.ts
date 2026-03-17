@@ -256,46 +256,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       let fetchedAnswer: string | null = null;
       const { selectedLeague, recentTeams } = get();
 
-      try {
-        // Call the new RPC function to get a completely random match
-        // with cross-league constraints (if applicable) and team exclusion logic.
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_random_match', {
-          p_league_id: selectedLeague,
-          p_recent_teams: recentTeams
-        });
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_random_match', {
+        p_league_id: selectedLeague,
+        p_recent_teams: recentTeams
+      });
 
-        if (rpcError) throw rpcError;
+      if (rpcError) {
+        console.error('ERRORE RPC SUPABASE:', rpcError);
+        throw rpcError;
+      }
 
-        if (rpcData && rpcData.length > 0) {
-          const m = rpcData[0];
-          matchData = {
-            team1_id: m.team1_id,
-            team1_name: m.team1_name,
-            team1_logo: m.team1_logo,
-            team2_id: m.team2_id,
-            team2_name: m.team2_name,
-            team2_logo: m.team2_logo,
-          };
-          fetchedAnswer = m.player_name;
-
-          // Update recent teams to avoid picking them again soon
-          const newRecentTeams = [...recentTeams, m.team1_id, m.team2_id].slice(-20); // Keep last 20 teams
-          set({ recentTeams: newRecentTeams });
-        } else {
-          throw new Error('Nessun match valido trovato tramite RPC');
-        }
-      } catch (dbError) {
-        console.warn('RPC fallita o database vuoto, uso dati di fallback:', dbError);
-        // Fallback data se l'RPC fallisce (es. se la migration non è ancora stata applicata)
+      if (rpcData && rpcData.length > 0) {
+        const m = rpcData[0];
         matchData = {
-          team1_id: 496,
-          team1_name: 'Juventus',
-          team1_logo: 'https://media.api-sports.io/football/teams/496.png',
-          team2_id: 505,
-          team2_name: 'Inter',
-          team2_logo: 'https://media.api-sports.io/football/teams/505.png',
+          team1_id: m.team1_id,
+          team1_name: m.team1_name,
+          team1_logo: m.team1_logo,
+          team2_id: m.team2_id,
+          team2_name: m.team2_name,
+          team2_logo: m.team2_logo,
         };
-        fetchedAnswer = 'Zlatan Ibrahimovic';
+        fetchedAnswer = m.player_name;
+
+        // Update recent teams to avoid picking them again soon
+        const newRecentTeams = [...recentTeams, m.team1_id, m.team2_id].slice(-20); // Keep last 20 teams
+        set({ recentTeams: newRecentTeams });
+      } else {
+        throw new Error('Nessun match valido trovato tramite RPC');
       }
 
       const { gameChannel, gameMode } = get();
@@ -317,6 +304,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }));
     } catch (error) {
       console.error('Errore critico durante il fetch del match:', error);
+      get().resetGame();
+      alert('Impossibile trovare un match. Riprova o cambia campionato.');
     }
   },
 
@@ -349,22 +338,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         rarity = (data as any).rarity_multiplier || 1.0;
         realPlayerName = (data as any).player_name || playerName;
       }
-      
-      // If RPC returned empty but we are using fallback match, use fallback validation
-      if (!isCorrect && match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
-        throw new Error('Fallback to local validation');
-      }
     } catch (error) {
-      console.warn('Errore RPC o match di fallback, uso validazione locale:', error);
-      // Fallback validation for testing
-      if (match.team1_name === 'Juventus' && match.team2_name === 'Inter') {
-        const validNames = ['ibrahimovic', 'baggio', 'pirlo', 'cannavaro', 'vidal', 'cancelo', 'seedorf', 'vieri'];
-        isCorrect = validNames.some(n => playerName.toLowerCase().includes(n));
-        if (isCorrect) {
-          if (playerName.length >= 15) rarity = 2.5;
-          else if (playerName.length >= 10) rarity = 1.5;
-        }
-      }
+      console.warn('Errore RPC durante la validazione:', error);
     }
 
     if (isCorrect) {

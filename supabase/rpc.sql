@@ -72,17 +72,16 @@ BEGIN
 
   ELSE
     -- MODALITA' LEGA SINGOLA
-    -- 1. Selezioniamo un giocatore casuale che abbia giocato in almeno 1 squadra DELLA LEGA, 
-    -- e almeno in un'altra squadra (anche fuori lega o nella stessa) evitando i recenti.
+    -- 1. Selezioniamo un giocatore casuale che abbia giocato in almeno 2 squadre DELLA LEGA, 
+    -- evitando i recenti.
     WITH eligible_players AS (
       SELECT p.id
       FROM players p
       JOIN player_teams pt ON p.id = pt.player_id
       JOIN teams t ON pt.team_id = t.id
+      WHERE t.league_id = p_league_id AND NOT (t.id = ANY(p_recent_teams))
       GROUP BY p.id
-      HAVING 
-        COUNT(DISTINCT pt.team_id) FILTER (WHERE NOT (pt.team_id = ANY(p_recent_teams))) >= 2 AND
-        COUNT(*) FILTER (WHERE t.league_id = p_league_id AND NOT (pt.team_id = ANY(p_recent_teams))) >= 1
+      HAVING COUNT(DISTINCT pt.team_id) >= 2
     )
     SELECT id INTO v_player_id
     FROM eligible_players
@@ -90,22 +89,23 @@ BEGIN
     LIMIT 1;
 
     IF v_player_id IS NOT NULL THEN
-        -- Proviamo a prendere 2 team di cui ALMENO UNO è del campionato, ed EVITANDO i recenti
+        -- Prendiamo 2 team ENTRAMBI del campionato, ed EVITANDO i recenti
         WITH eligible_teams AS (
-           SELECT t.id, t.league_id 
+           SELECT t.id 
            FROM teams t 
            JOIN player_teams pt ON t.id = pt.team_id
-           WHERE pt.player_id = v_player_id AND NOT (t.id = ANY(p_recent_teams))
+           WHERE pt.player_id = v_player_id 
+             AND t.league_id = p_league_id 
+             AND NOT (t.id = ANY(p_recent_teams))
         )
         SELECT t1.id, t2.id INTO v_team1_id, v_team2_id
         FROM eligible_teams t1
-        JOIN eligible_teams t2 ON t1.id <> t2.id AND t1.id < t2.id
-        WHERE t1.league_id = p_league_id OR t2.league_id = p_league_id
+        JOIN eligible_teams t2 ON t1.id < t2.id
         ORDER BY random() 
         LIMIT 1;
     END IF;
     
-    -- Fallback per singola lega: ignora recenti
+    -- Fallback per singola lega: ignora recenti, ma MANTIENI il vincolo della lega
     IF v_team1_id IS NULL THEN
        WITH fallback_players AS (
          SELECT p.id FROM players p
@@ -118,7 +118,12 @@ BEGIN
        SELECT id INTO v_player_id FROM fallback_players ORDER BY random() LIMIT 1;
 
        IF v_player_id IS NOT NULL THEN
-          WITH et AS (SELECT team_id as id FROM player_teams WHERE player_id = v_player_id)
+          WITH et AS (
+            SELECT t.id 
+            FROM teams t 
+            JOIN player_teams pt ON t.id = pt.team_id 
+            WHERE pt.player_id = v_player_id AND t.league_id = p_league_id
+          )
           SELECT t1.id, t2.id INTO v_team1_id, v_team2_id
           FROM et t1 JOIN et t2 ON t1.id < t2.id
           ORDER BY random() LIMIT 1;
