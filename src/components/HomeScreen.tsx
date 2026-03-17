@@ -13,13 +13,19 @@ const LEAGUES = [
   { id: 61, name: 'Ligue 1 🇫🇷' },
 ];
 
+const DIFFICULTIES = [
+  { id: 1, name: 'Facile' },
+  { id: 2, name: 'Medio' },
+  { id: 3, name: 'Difficile' },
+];
+
 interface HomeScreenProps {
   onNavigateToAuth: () => void;
   onNavigateToProfile: () => void;
 }
 
 export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
-  const { findMatch, status, selectedLeague, setSelectedLeague, gameMode, setGameMode, resetGame } = useGameStore();
+  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame } = useGameStore();
   const { user, profile } = useAuthStore();
 
   return (
@@ -116,6 +122,28 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="w-full space-y-2">
+              <label className="text-zinc-400 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+                <Trophy size={16} />
+                Difficoltà
+              </label>
+              <div className="flex gap-2 w-full">
+                {DIFFICULTIES.map((diff) => (
+                  <button
+                    key={diff.id}
+                    onClick={() => setSelectedDifficulty(diff.id)}
+                    className={`flex-1 py-3 rounded-xl font-bold transition-colors border-2 ${
+                      selectedDifficulty === diff.id
+                        ? 'bg-[#FFD700] text-black border-[#FFD700]'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
+                    }`}
+                  >
+                    {diff.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <motion.button

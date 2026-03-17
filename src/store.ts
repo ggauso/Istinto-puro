@@ -27,6 +27,7 @@ interface GameState {
   gameChannel: RealtimeChannel | null;
   matchmakingChannel: RealtimeChannel | null;
   selectedLeague: number | null;
+  selectedDifficulty: number;
   gameMode: 'pvp' | 'ai';
   correctAnswer: string | null;
   recentTeams: number[];
@@ -43,6 +44,7 @@ interface GameState {
   
   setGameMode: (mode: 'pvp' | 'ai') => void;
   setSelectedLeague: (leagueId: number | null) => void;
+  setSelectedDifficulty: (difficulty: number) => void;
   findMatch: () => void;
   joinGameRoom: (roomId: string, isHost: boolean) => void;
   fetchMatchAndBroadcast: () => Promise<void>;
@@ -64,6 +66,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameChannel: null,
   matchmakingChannel: null,
   selectedLeague: null,
+  selectedDifficulty: 1, // Default Facile
   gameMode: 'pvp',
   correctAnswer: null,
   recentTeams: [],
@@ -79,6 +82,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setGameMode: (mode) => set({ gameMode: mode }),
   setSelectedLeague: (leagueId) => set({ selectedLeague: leagueId }),
+  setSelectedDifficulty: (difficulty) => set({ selectedDifficulty: difficulty }),
 
   findMatch: () => {
     const { gameMode } = get();
@@ -254,11 +258,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       let matchData: MatchData | null = null;
       let fetchedAnswer: string | null = null;
-      const { selectedLeague, recentTeams } = get();
+      const { selectedLeague, selectedDifficulty, recentTeams } = get();
 
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_random_match', {
         p_league_id: selectedLeague,
-        p_recent_teams: recentTeams
+        p_recent_teams: recentTeams,
+        p_difficulty: selectedDifficulty
       });
 
       if (rpcError) {
@@ -351,7 +356,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (currentStreak === 1) combo = 1.1;
       else if (currentStreak >= 2) combo = 1.25;
 
-      const roundScore = Math.floor((1000 - 100 * t) * rarity * combo);
+      // Moltiplicatore di difficoltà: Facile = 1x, Medio = 1.5x, Difficile = 2x
+      const difficultyMultiplier = 1 + ((get().selectedDifficulty - 1) * 0.5);
+
+      const roundScore = Math.floor((1000 - 100 * t) * rarity * combo * difficultyMultiplier);
 
       const newPlayerRoundsWon = get().playerRoundsWon + 1;
       const newStreak = currentStreak + 1;
