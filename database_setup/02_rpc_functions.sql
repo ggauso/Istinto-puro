@@ -24,7 +24,7 @@ CREATE OR REPLACE FUNCTION validate_player_intersection(
 ) AS $$
 BEGIN
   RETURN QUERY
-  SELECT 
+  SELECT DISTINCT
     TRUE AS valid,
     p.id AS player_id,
     p.name AS player_name,
@@ -68,19 +68,22 @@ BEGIN
     WHERE NOT (id = ANY(p_recent_teams))
       AND (p_league_id IS NULL OR league_id = p_league_id)
   ),
+  DistinctPT AS (
+    SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
+    FROM player_teams pt
+    JOIN ValidTeams vt ON pt.team_id = vt.id
+  ),
   TeamIntersections AS (
     SELECT 
         a.team_id AS team_a, 
         b.team_id AS team_b, 
         COUNT(a.player_id) AS common_players
-    FROM player_teams a
-    JOIN player_teams b ON a.player_id = b.player_id
-    JOIN ValidTeams vta ON a.team_id = vta.id
-    JOIN ValidTeams vtb ON b.team_id = vtb.id
+    FROM DistinctPT a
+    JOIN DistinctPT b ON a.player_id = b.player_id
     WHERE a.team_id < b.team_id
       -- Se p_league_id è NULL (Tutti i campionati), vogliamo squadre di leghe DIVERSE
       -- Se p_league_id è impostato, ValidTeams ha già filtrato per quella lega
-      AND (p_league_id IS NOT NULL OR vta.league_id <> vtb.league_id)
+      AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
     GROUP BY a.team_id, b.team_id
   ),
   RankedTeams AS (
@@ -110,14 +113,17 @@ BEGIN
       WHERE NOT (id = ANY(p_recent_teams))
         AND (p_league_id IS NULL OR league_id = p_league_id)
     ),
+    DistinctPT AS (
+      SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
+      FROM player_teams pt
+      JOIN ValidTeams vt ON pt.team_id = vt.id
+    ),
     TeamIntersections AS (
       SELECT a.team_id AS team_a, b.team_id AS team_b
-      FROM player_teams a
-      JOIN player_teams b ON a.player_id = b.player_id
-      JOIN ValidTeams vta ON a.team_id = vta.id
-      JOIN ValidTeams vtb ON b.team_id = vtb.id
+      FROM DistinctPT a
+      JOIN DistinctPT b ON a.player_id = b.player_id
       WHERE a.team_id < b.team_id
-        AND (p_league_id IS NOT NULL OR vta.league_id <> vtb.league_id)
+        AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
       GROUP BY a.team_id, b.team_id
     )
     SELECT team_a, team_b INTO v_team1_id, v_team2_id
@@ -133,14 +139,17 @@ BEGIN
       FROM teams
       WHERE (p_league_id IS NULL OR league_id = p_league_id)
     ),
+    DistinctPT AS (
+      SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
+      FROM player_teams pt
+      JOIN ValidTeams vt ON pt.team_id = vt.id
+    ),
     TeamIntersections AS (
       SELECT a.team_id AS team_a, b.team_id AS team_b
-      FROM player_teams a
-      JOIN player_teams b ON a.player_id = b.player_id
-      JOIN ValidTeams vta ON a.team_id = vta.id
-      JOIN ValidTeams vtb ON b.team_id = vtb.id
+      FROM DistinctPT a
+      JOIN DistinctPT b ON a.player_id = b.player_id
       WHERE a.team_id < b.team_id
-        AND (p_league_id IS NOT NULL OR vta.league_id <> vtb.league_id)
+        AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
       GROUP BY a.team_id, b.team_id
     )
     SELECT team_a, team_b INTO v_team1_id, v_team2_id

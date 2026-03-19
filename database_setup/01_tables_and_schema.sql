@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE TABLE IF NOT EXISTS player_teams (
   player_id BIGINT REFERENCES players(id) ON DELETE CASCADE,
   team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
-  PRIMARY KEY (player_id, team_id)
+  season INTEGER,
+  PRIMARY KEY (player_id, team_id, season)
 );
 
 -- 5. Creare la tabella dei Profili Utente (Indipendente da Supabase Auth)

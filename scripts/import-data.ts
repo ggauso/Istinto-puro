@@ -24,6 +24,7 @@ const TOP_5_LEAGUES = [
 ];
 
 const STATE_FILE = path.join(process.cwd(), 'import-state.json');
+const IMPORTED_SQUADS_FILE = path.join(process.cwd(), 'imported-squads.json');
 
 interface ImportState {
   seasonIndex: number;
@@ -52,6 +53,21 @@ function loadState(): ImportState {
 
 function saveState(state: ImportState) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+function loadImportedSquads(): Record<string, boolean> {
+  if (fs.existsSync(IMPORTED_SQUADS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(IMPORTED_SQUADS_FILE, 'utf-8'));
+    } catch (e) {
+      console.warn('Impossibile leggere imported-squads.json, ricomincio da zero.');
+    }
+  }
+  return {};
+}
+
+function saveImportedSquads(squads: Record<string, boolean>) {
+  fs.writeFileSync(IMPORTED_SQUADS_FILE, JSON.stringify(squads, null, 2));
 }
 
 // Helper per le chiamate ad API-Football
@@ -93,6 +109,7 @@ async function importData() {
   console.log('🚀 Inizio importazione dati da API-Football a Supabase...');
   
   let state = loadState();
+  let importedSquads = loadImportedSquads();
   console.log(`📂 Stato ripristinato: Stagione Index ${state.seasonIndex}, Lega Index ${state.leagueIndex}, Team Index ${state.teamIndex}, Pagina ${state.page}`);
 
   for (let s = state.seasonIndex; s < SEASONS.length; s++) {
@@ -114,6 +131,18 @@ async function importData() {
           
           console.log(`  -> Inserimento squadra: ${team.name} (${t + 1}/${teamsData.length})`);
           
+          // 2. Recupera i giocatori della squadra
+          let page = (s === state.seasonIndex && l === state.leagueIndex && t === state.teamIndex) ? state.page : 1;
+          let totalPages = page;
+
+          const squadKey = `${team.id}_${season}`;
+          if (importedSquads[squadKey] && page === 1) {
+            console.log(`    ⏭️ Squadra ${team.name} (Stagione ${season}) già importata in precedenza. Salto.`);
+            state = { seasonIndex: s, leagueIndex: l, teamIndex: t + 1, page: 1 };
+            saveState(state);
+            continue;
+          }
+
           // Upsert Squadra
           const { error: teamError } = await supabase!.from('teams').upsert({
             id: team.id,
@@ -126,10 +155,6 @@ async function importData() {
             console.error(`Errore inserimento squadra ${team.name}:`, teamError.message);
             continue;
           }
-
-          // 2. Recupera i giocatori della squadra
-          let page = (s === state.seasonIndex && l === state.leagueIndex && t === state.teamIndex) ? state.page : 1;
-          let totalPages = page;
 
           do {
             console.log(`    -> Recupero giocatori squadra ${team.name}, pagina ${page}`);
@@ -167,8 +192,9 @@ async function importData() {
                 // Upsert Relazione Giocatore-Squadra
                 await supabase!.from('player_teams').upsert({
                   player_id: player.id,
-                  team_id: team.id
-                }, { onConflict: 'player_id,team_id' });
+                  team_id: team.id,
+                  season: season
+                }, { onConflict: 'player_id,team_id,season' });
               }
             }
             
@@ -183,6 +209,10 @@ async function importData() {
             saveState(state);
             page++;
           } while (page <= totalPages);
+
+          // Segna la squadra come completata per questa stagione
+          importedSquads[squadKey] = true;
+          saveImportedSquads(importedSquads);
         }
         
         // Se abbiamo finito tutti i team di questa lega, passiamo alla lega successiva
