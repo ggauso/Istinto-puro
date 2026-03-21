@@ -11,8 +11,9 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 // Configurazione API-Football
 const API_KEY = process.env.API_FOOTBALL_KEY || '';
 const API_HOST = 'v3.football.api-sports.io';
-// Stagioni da importare (es. dal 2022 al 2024 per il piano gratuito)
-const SEASONS = [2022, 2023, 2024];
+// Stagioni da importare (es. dal 2010 al 2024)
+// NOTA: Importare molte stagioni consumerà molte richieste API. Assicurati di avere un piano adeguato su API-Football.
+const SEASONS = Array.from({ length: 2024 - 2010 + 1 }, (_, i) => 2010 + i); // [2010, 2011, ..., 2024]
 
 // ID dei Top 5 Campionati Europei su API-Football
 const TOP_5_LEAGUES = [
