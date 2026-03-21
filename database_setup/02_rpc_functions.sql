@@ -20,23 +20,34 @@ CREATE OR REPLACE FUNCTION validate_player_intersection(
   valid BOOLEAN,
   player_id BIGINT,
   player_name TEXT,
-  similarity_score REAL
+  similarity_score REAL,
+  team_a_seasons INTEGER[],
+  team_b_seasons INTEGER[]
 ) AS $$
 BEGIN
   RETURN QUERY
-  SELECT DISTINCT
+  WITH MatchedPlayer AS (
+    SELECT DISTINCT
+      p.id AS pid,
+      p.name AS pname,
+      similarity(p.name, input_name) AS sim
+    FROM players p
+    JOIN player_teams pt1 ON p.id = pt1.player_id
+    JOIN player_teams pt2 ON p.id = pt2.player_id
+    WHERE pt1.team_id = team_a_id 
+      AND pt2.team_id = team_b_id
+      AND p.name % input_name
+    ORDER BY sim DESC
+    LIMIT 1
+  )
+  SELECT 
     TRUE AS valid,
-    p.id AS player_id,
-    p.name AS player_name,
-    similarity(p.name, input_name) AS similarity_score
-  FROM players p
-  JOIN player_teams pt1 ON p.id = pt1.player_id
-  JOIN player_teams pt2 ON p.id = pt2.player_id
-  WHERE pt1.team_id = team_a_id 
-    AND pt2.team_id = team_b_id
-    AND p.name % input_name
-  ORDER BY similarity_score DESC
-  LIMIT 1;
+    m.pid AS player_id,
+    m.pname AS player_name,
+    m.sim AS similarity_score,
+    ARRAY(SELECT season FROM player_teams WHERE player_teams.player_id = m.pid AND team_id = team_a_id ORDER BY season) AS team_a_seasons,
+    ARRAY(SELECT season FROM player_teams WHERE player_teams.player_id = m.pid AND team_id = team_b_id ORDER BY season) AS team_b_seasons
+  FROM MatchedPlayer m;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -55,123 +66,97 @@ CREATE OR REPLACE FUNCTION get_random_match(
   team2_id BIGINT,
   team2_name TEXT,
   team2_logo TEXT,
-  player_name TEXT
+  player_name TEXT,
+  team1_seasons INTEGER[],
+  team2_seasons INTEGER[]
 ) AS $$
 DECLARE
   v_player_id BIGINT;
   v_team1_id BIGINT;
   v_team2_id BIGINT;
 BEGIN
+  -- Ottimizzazione estrema: invece di calcolare tutte le intersezioni (lento),
+  -- peschiamo un giocatore casuale che ha giocato in almeno 2 squadre valide
+  -- e prendiamo 2 di quelle squadre.
+
   WITH ValidTeams AS (
-    SELECT id, league_id 
+    SELECT id 
     FROM teams
-    WHERE NOT (id = ANY(p_recent_teams))
-      AND (p_league_id IS NULL OR league_id = p_league_id)
+    WHERE (p_league_id IS NULL OR league_id = p_league_id)
+      AND NOT (id = ANY(p_recent_teams))
   ),
-  DistinctPT AS (
-    SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
+  PlayerWithMultipleTeams AS (
+    SELECT pt.player_id
     FROM player_teams pt
     JOIN ValidTeams vt ON pt.team_id = vt.id
-  ),
-  TeamIntersections AS (
-    SELECT 
-        a.team_id AS team_a, 
-        b.team_id AS team_b, 
-        COUNT(a.player_id) AS common_players
-    FROM DistinctPT a
-    JOIN DistinctPT b ON a.player_id = b.player_id
-    WHERE a.team_id < b.team_id
-      -- Se p_league_id è NULL (Tutti i campionati), vogliamo squadre di leghe DIVERSE
-      -- Se p_league_id è impostato, ValidTeams ha già filtrato per quella lega
-      AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
-    GROUP BY a.team_id, b.team_id
-  ),
-  RankedTeams AS (
-    SELECT 
-        team_a, 
-        team_b, 
-        common_players,
-        NTILE(3) OVER (ORDER BY common_players DESC) AS group_tier
-    FROM TeamIntersections
-  ),
-  FilteredTeams AS (
-    SELECT team_a, team_b
-    FROM RankedTeams
-    WHERE group_tier = p_difficulty
-  )
-  SELECT team_a, team_b INTO v_team1_id, v_team2_id
-  FROM FilteredTeams
-  ORDER BY random()
-  LIMIT 1;
-
-  -- Fallback 1: Se non trova nulla per quel livello di difficoltà (es. pochi dati), 
-  -- ripiega su qualsiasi tier tra i team validi
-  IF v_team1_id IS NULL THEN
-    WITH ValidTeams AS (
-      SELECT id, league_id 
-      FROM teams
-      WHERE NOT (id = ANY(p_recent_teams))
-        AND (p_league_id IS NULL OR league_id = p_league_id)
-    ),
-    DistinctPT AS (
-      SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
-      FROM player_teams pt
-      JOIN ValidTeams vt ON pt.team_id = vt.id
-    ),
-    TeamIntersections AS (
-      SELECT a.team_id AS team_a, b.team_id AS team_b
-      FROM DistinctPT a
-      JOIN DistinctPT b ON a.player_id = b.player_id
-      WHERE a.team_id < b.team_id
-        AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
-      GROUP BY a.team_id, b.team_id
-    )
-    SELECT team_a, team_b INTO v_team1_id, v_team2_id
-    FROM TeamIntersections
+    GROUP BY pt.player_id
+    HAVING COUNT(DISTINCT pt.team_id) >= 2
     ORDER BY random()
-    LIMIT 1;
-  END IF;
+    LIMIT 1
+  ),
+  SelectedTeams AS (
+    SELECT pt.team_id
+    FROM player_teams pt
+    JOIN ValidTeams vt ON pt.team_id = vt.id
+    WHERE pt.player_id = (SELECT player_id FROM PlayerWithMultipleTeams)
+    GROUP BY pt.team_id
+    ORDER BY random()
+    LIMIT 2
+  )
+  SELECT 
+    MAX(CASE WHEN rn = 1 THEN team_id END),
+    MAX(CASE WHEN rn = 2 THEN team_id END),
+    MAX(player_id)
+  INTO v_team1_id, v_team2_id, v_player_id
+  FROM (
+    SELECT team_id, (SELECT player_id FROM PlayerWithMultipleTeams) as player_id, row_number() OVER () as rn
+    FROM SelectedTeams
+  ) sub;
 
-  -- Fallback 2: Se ancora NULL (es. p_recent_teams blocca tutto), ignora p_recent_teams
-  IF v_team1_id IS NULL THEN
+  -- Fallback: se non trova nulla (es. p_recent_teams troppo restrittivo), ignora i recent_teams
+  IF v_team1_id IS NULL OR v_team2_id IS NULL THEN
     WITH ValidTeams AS (
-      SELECT id, league_id 
+      SELECT id 
       FROM teams
       WHERE (p_league_id IS NULL OR league_id = p_league_id)
     ),
-    DistinctPT AS (
-      SELECT DISTINCT pt.player_id, pt.team_id, vt.league_id
+    PlayerWithMultipleTeams AS (
+      SELECT pt.player_id
       FROM player_teams pt
       JOIN ValidTeams vt ON pt.team_id = vt.id
+      GROUP BY pt.player_id
+      HAVING COUNT(DISTINCT pt.team_id) >= 2
+      ORDER BY random()
+      LIMIT 1
     ),
-    TeamIntersections AS (
-      SELECT a.team_id AS team_a, b.team_id AS team_b
-      FROM DistinctPT a
-      JOIN DistinctPT b ON a.player_id = b.player_id
-      WHERE a.team_id < b.team_id
-        AND (p_league_id IS NOT NULL OR a.league_id <> b.league_id)
-      GROUP BY a.team_id, b.team_id
+    SelectedTeams AS (
+      SELECT pt.team_id
+      FROM player_teams pt
+      JOIN ValidTeams vt ON pt.team_id = vt.id
+      WHERE pt.player_id = (SELECT player_id FROM PlayerWithMultipleTeams)
+      GROUP BY pt.team_id
+      ORDER BY random()
+      LIMIT 2
     )
-    SELECT team_a, team_b INTO v_team1_id, v_team2_id
-    FROM TeamIntersections
-    ORDER BY random()
-    LIMIT 1;
+    SELECT 
+      MAX(CASE WHEN rn = 1 THEN team_id END),
+      MAX(CASE WHEN rn = 2 THEN team_id END),
+      MAX(player_id)
+    INTO v_team1_id, v_team2_id, v_player_id
+    FROM (
+      SELECT team_id, (SELECT player_id FROM PlayerWithMultipleTeams) as player_id, row_number() OVER () as rn
+      FROM SelectedTeams
+    ) sub;
   END IF;
 
-  -- Seleziona un giocatore casuale in comune
-  IF v_team1_id IS NOT NULL THEN
-    SELECT a.player_id INTO v_player_id
-    FROM player_teams a
-    JOIN player_teams b ON a.player_id = b.player_id
-    WHERE a.team_id = v_team1_id AND b.team_id = v_team2_id
-    ORDER BY random()
-    LIMIT 1;
-
+  IF v_team1_id IS NOT NULL AND v_team2_id IS NOT NULL THEN
     RETURN QUERY
     SELECT 
       t1.id, t1.name, t1.logo_url,
       t2.id, t2.name, t2.logo_url,
-      p.name
+      p.name,
+      ARRAY(SELECT season FROM player_teams WHERE player_teams.player_id = v_player_id AND team_id = v_team1_id ORDER BY season) AS team1_seasons,
+      ARRAY(SELECT season FROM player_teams WHERE player_teams.player_id = v_player_id AND team_id = v_team2_id ORDER BY season) AS team2_seasons
     FROM teams t1
     CROSS JOIN teams t2
     CROSS JOIN players p

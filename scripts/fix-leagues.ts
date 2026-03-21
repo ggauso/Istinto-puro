@@ -7,7 +7,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 
 const API_KEY = process.env.API_FOOTBALL_KEY || '';
 const API_HOST = 'v3.football.api-sports.io';
-const SEASONS = [2022, 2023, 2024];
+const SEASONS = Array.from({ length: 2024 - 2010 + 1 }, (_, i) => 2010 + i);
 const TOP_5_LEAGUES = [39, 140, 135, 78, 61];
 
 async function fetchApiFootball(endpoint: string, params: Record<string, string> = {}) {
