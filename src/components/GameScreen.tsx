@@ -7,10 +7,16 @@ import { Home, Flag } from 'lucide-react';
 export function GameScreen() {
   const { 
     match, score, timeLeft, status, validatePlayer, tickTimer, 
-    fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer,
+    fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer, correctAnswerSeasons,
     round, playerRoundsWon, opponentRoundsWon, streak, lastScoreAdded, lastRarity, lastCombo, isHost,
     abandonMatch
   } = useGameStore();
+
+  const renderSeasons = (seasons: number[] | undefined) => {
+    if (!seasons) return 'N/D';
+    const validSeasons = seasons.filter(s => s !== null && s !== undefined);
+    return validSeasons.length > 0 ? validSeasons.join(', ') : 'N/D';
+  };
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
   const [showAbandonModal, setShowAbandonModal] = useState(false);
@@ -66,7 +72,23 @@ export function GameScreen() {
     }
   };
 
-  if (!match) return null;
+  if (!match) {
+    let loadingText = 'Preparazione match...';
+    if (status === 'joining') loadingText = 'Connessione in corso...';
+    else if (status === 'match_won') loadingText = 'Vittoria a tavolino! Ritorno alla home...';
+    else if (status === 'match_lost') loadingText = 'Sconfitta. Ritorno alla home...';
+
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-4 font-sans">
+        {(status === 'joining' || status === 'starting') && (
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]"></div>
+        )}
+        <p className="mt-6 text-[#FFD700] font-bold animate-pulse text-xl text-center">
+          {loadingText}
+        </p>
+      </div>
+    );
+  }
 
   const totalTime = gameMode === 'ai' ? 15 : 10;
   const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
@@ -192,6 +214,18 @@ export function GameScreen() {
               <span>Rarità: x{lastRarity}</span>
               <span>Combo: x{lastCombo}</span>
             </div>
+            {correctAnswerSeasons && (
+              <div className="mt-4 text-sm text-zinc-300 bg-zinc-900/80 px-4 py-3 rounded-xl border border-zinc-700 shadow-lg w-full max-w-sm">
+                <div className="flex justify-between gap-4 mb-1">
+                  <span className="text-zinc-400">{match.team1_name}:</span>
+                  <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team1)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-zinc-400">{match.team2_name}:</span>
+                  <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team2)}</span>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -208,6 +242,18 @@ export function GameScreen() {
               <div className="text-lg text-zinc-300 text-center bg-zinc-900/80 px-6 py-4 rounded-xl border border-zinc-700 shadow-lg mt-2">
                 <span className="block mb-1 text-sm uppercase tracking-wider text-zinc-400">Una risposta corretta era:</span>
                 <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>
+                {correctAnswerSeasons && (
+                  <div className="mt-3 flex flex-col gap-1 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">{match.team1_name}:</span>
+                      <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team1)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">{match.team2_name}:</span>
+                      <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team2)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
@@ -226,6 +272,18 @@ export function GameScreen() {
               <div className="text-lg text-zinc-300 text-center bg-zinc-900/80 px-6 py-4 rounded-xl border border-zinc-700 shadow-lg">
                 <span className="block mb-1 text-sm uppercase tracking-wider text-zinc-400">Una risposta corretta era:</span>
                 <span className="text-[#FFD700] font-bold text-2xl">{correctAnswer}</span>
+                {correctAnswerSeasons && (
+                  <div className="mt-3 flex flex-col gap-1 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">{match.team1_name}:</span>
+                      <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team1)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">{match.team2_name}:</span>
+                      <span className="font-mono text-zinc-200">{renderSeasons(correctAnswerSeasons.team2)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {gameMode === 'ai' && (

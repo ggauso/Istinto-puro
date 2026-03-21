@@ -25,7 +25,7 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
-  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame } = useGameStore();
+  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame, errorMsg, setErrorMsg } = useGameStore();
   const { user, profile } = useAuthStore();
 
   return (
@@ -75,6 +75,18 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
         <p className="text-zinc-400 text-center max-w-sm text-lg leading-relaxed">
           Il trivia calcistico 1vs1. Trova il giocatore in comune tra le due squadre prima che scada il tempo.
         </p>
+
+        {errorMsg && (
+          <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-xl max-w-sm text-center text-sm font-medium">
+            {errorMsg}
+            <button 
+              onClick={() => setErrorMsg(null)}
+              className="ml-2 underline text-red-400 hover:text-red-300"
+            >
+              Chiudi
+            </button>
+          </div>
+        )}
 
         {status === 'searching' ? (
           <div className="mt-8 flex flex-col items-center space-y-4">
