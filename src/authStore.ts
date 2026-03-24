@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
+import { getCurrentProfile, updateProfile } from './lib/rpc-client';
 import { User } from '@supabase/supabase-js';
 
 export interface Profile {
@@ -32,6 +33,39 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
+  // Esporto getCurrentProfile e updateProfile per essere chiamati dall'esterno
+  getCurrentProfile,
+  updateProfile,
+
+  getCurrentProfile: async () => {
+    try {
+      const profile = await getCurrentProfile();
+      set({ profile });
+      return profile;
+    } catch (error) {
+      console.error('Errore nella chiamata a getCurrentProfile:', error);
+      return null;
+    }
+  },
+
+  updateProfile: async (score: number) => {
+    try {
+      await updateProfile(score);
+      const { profile } = get();
+      set({
+        profile: profile
+          ? {
+              ...profile,
+              total_score: (profile.total_score || 0) + score,
+              matches_played: (profile.matches_played || 0) + 1
+            }
+          : null,
+      });
+    } catch (error) {
+      console.error('Errore nella chiamata a updateProfile:', error);
+      throw error;
+    }
+  },
   user: null,
   profile: null,
   loading: true,
