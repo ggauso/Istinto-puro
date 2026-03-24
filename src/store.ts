@@ -32,7 +32,6 @@ interface GameState {
   correctAnswer: string | null;
   correctAnswerSeasons: { team1: number[], team2: number[] } | null;
   recentTeams: number[];
-  errorMsg: string | null;
   
   isHost: boolean;
   round: number;
@@ -55,7 +54,6 @@ interface GameState {
   abandonMatch: () => void;
   resetGame: () => void;
   setStatus: (status: GameState['status']) => void;
-  setErrorMsg: (msg: string | null) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
@@ -74,7 +72,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   correctAnswer: null,
   correctAnswerSeasons: null,
   recentTeams: [],
-  errorMsg: null,
   isHost: false,
   round: 0,
   playerRoundsWon: 0,
@@ -88,7 +85,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   setGameMode: (mode) => set({ gameMode: mode }),
   setSelectedLeague: (leagueId) => set({ selectedLeague: leagueId }),
   setSelectedDifficulty: (difficulty) => set({ selectedDifficulty: difficulty }),
-  setErrorMsg: (msg) => set({ errorMsg: msg }),
 
   findMatch: () => {
     const { gameMode } = get();
@@ -181,12 +177,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       .on('broadcast', { event: 'game_start' }, (payload) => {
         console.log('Partita iniziata!');
         if (readyInterval) clearInterval(readyInterval);
-        set((state) => ({ 
-          match: payload.payload.match, 
-          status: 'playing', 
-          timeLeft: 10, 
+        set((state) => ({
+          match: payload.payload.match,
+          status: 'playing',
+          timeLeft: 10,
           correctAnswer: payload.payload.correctAnswer,
-          correctAnswerSeasons: payload.payload.correctAnswerSeasons,
+          correctAnswerSeasons: payload.payload.correctAnswerSeasons || null,
           roundStartTime: Date.now(),
           round: state.round + 1
         }));
@@ -215,11 +211,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             streak: 0
           });
         }
-      })
-      .on('broadcast', { event: 'match_failed' }, () => {
-        // L'host non è riuscito a generare il match
-        get().resetGame();
-        set({ errorMsg: 'Impossibile generare un match. Riprova o cambia campionato.' });
       })
       .on('broadcast', { event: 'guest_ready' }, () => {
         if (isHost) {
@@ -270,21 +261,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       let matchData: MatchData | null = null;
       let fetchedAnswer: string | null = null;
-      let fetchedSeasons: { team1: number[], team2: number[] } | null = null;
       const { selectedLeague, selectedDifficulty, recentTeams } = get();
 
-      // Implement timeout for RPC call
-      const rpcPromise = supabase.rpc('get_random_match', {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_random_match', {
         p_league_id: selectedLeague,
-        p_recent_teams: recentTeams,
-        p_difficulty: selectedDifficulty
+        p_recent_teams: recentTeams
       });
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout RPC Supabase')), 8000)
-      );
-
-      const { data: rpcData, error: rpcError } = await Promise.race([rpcPromise, timeoutPromise]) as any;
 
       if (rpcError) {
         console.error('ERRORE RPC SUPABASE:', rpcError);
@@ -302,44 +284,41 @@ export const useGameStore = create<GameState>((set, get) => ({
           team2_logo: m.team2_logo,
         };
         fetchedAnswer = m.player_name;
-        fetchedSeasons = {
-          team1: m.team1_seasons || [],
-          team2: m.team2_seasons || []
-        };
+
+        // Store seasons for both teams
+        const team1Seasons = m.team1_seasons || [];
+        const team2Seasons = m.team2_seasons || [];
 
         // Update recent teams to avoid picking them again soon
         const newRecentTeams = [...recentTeams, m.team1_id, m.team2_id].slice(-20); // Keep last 20 teams
-        set({ recentTeams: newRecentTeams });
+        const correctAnswerSeasons = { team1: team1Seasons, team2: team2Seasons };
+
+        const { gameChannel, gameMode } = get();
+        if (gameChannel && matchData && gameMode === 'pvp') {
+          gameChannel.send({
+            type: 'broadcast',
+            event: 'game_start',
+            payload: { match: matchData, correctAnswer: fetchedAnswer, correctAnswerSeasons }
+          });
+        }
+
+        set({
+          recentTeams: newRecentTeams,
+          correctAnswerSeasons,
+          match: matchData,
+          timeLeft: gameMode === 'ai' ? 15 : 10,
+          status: 'playing',
+          correctAnswer: fetchedAnswer,
+          roundStartTime: Date.now(),
+          round: get().round + 1
+        });
       } else {
         throw new Error('Nessun match valido trovato tramite RPC');
       }
-
-      const { gameChannel, gameMode } = get();
-      if (gameChannel && matchData && gameMode === 'pvp') {
-        gameChannel.send({
-          type: 'broadcast',
-          event: 'game_start',
-          payload: { match: matchData, correctAnswer: fetchedAnswer, correctAnswerSeasons: fetchedSeasons }
-        });
-      }
-
-      set((state) => ({ 
-        match: matchData, 
-        timeLeft: gameMode === 'ai' ? 15 : 10, 
-        status: 'playing', 
-        correctAnswer: fetchedAnswer,
-        correctAnswerSeasons: fetchedSeasons,
-        roundStartTime: Date.now(),
-        round: state.round + 1
-      }));
     } catch (error) {
       console.error('Errore critico durante il fetch del match:', error);
-      const { gameChannel, gameMode } = get();
-      if (gameChannel && gameMode === 'pvp') {
-        gameChannel.send({ type: 'broadcast', event: 'match_failed' });
-      }
       get().resetGame();
-      set({ errorMsg: 'Impossibile trovare un match. Riprova o cambia campionato.' });
+      alert('Impossibile trovare un match. Riprova o cambia campionato.');
     }
   },
 
@@ -350,8 +329,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     let isCorrect = false;
     let rarity = 1.0;
     let realPlayerName = playerName;
-    let teamASeasons: number[] = [];
-    let teamBSeasons: number[] = [];
 
     try {
       const { data, error } = await supabase.rpc('validate_player_intersection', {
@@ -361,7 +338,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
 
       if (error) throw error;
-
+      
       // Handle both boolean return (old RPC), object return, and array of objects (from RETURNS TABLE)
       if (data === true) {
         isCorrect = true;
@@ -369,14 +346,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         isCorrect = true;
         rarity = 1.0 + (data[0].similarity_score || 0); // Use similarity as a small rarity boost
         realPlayerName = data[0].player_name || playerName;
-        teamASeasons = data[0].team_a_seasons || [];
-        teamBSeasons = data[0].team_b_seasons || [];
       } else if (data && !Array.isArray(data) && (data as any).is_valid) {
         isCorrect = true;
         rarity = (data as any).rarity_multiplier || 1.0;
         realPlayerName = (data as any).player_name || playerName;
-        teamASeasons = (data as any).team_a_seasons || [];
-        teamBSeasons = (data as any).team_b_seasons || [];
       }
     } catch (error) {
       console.warn('Errore RPC durante la validazione:', error);
@@ -421,8 +394,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastScoreAdded: roundScore,
         lastRarity: rarity,
         lastCombo: combo,
-        correctAnswer: realPlayerName,
-        correctAnswerSeasons: { team1: teamASeasons, team2: teamBSeasons }
+        correctAnswer: realPlayerName
       }));
       return true;
     } else {
@@ -471,12 +443,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   resetGame: () => {
     const { gameChannel, matchmakingChannel, gameMode } = get();
-    try {
-      if (gameChannel) supabase.removeChannel(gameChannel);
-      if (matchmakingChannel) supabase.removeChannel(matchmakingChannel);
-    } catch (e) {
-      console.error('Error removing channels:', e);
-    }
+    if (gameChannel) supabase.removeChannel(gameChannel);
+    if (matchmakingChannel) supabase.removeChannel(matchmakingChannel);
     
     set({ 
       status: 'idle', 

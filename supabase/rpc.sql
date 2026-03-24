@@ -9,7 +9,9 @@ CREATE OR REPLACE FUNCTION get_random_match(
   team2_id BIGINT,
   team2_name TEXT,
   team2_logo TEXT,
-  player_name TEXT
+  player_name TEXT,
+  team1_seasons INTEGER[],
+  team2_seasons INTEGER[]
 ) AS $$
 DECLARE
   v_player_id BIGINT;
@@ -135,10 +137,12 @@ BEGIN
   -- 3. Ritorna il risultato combinato
   IF v_team1_id IS NOT NULL THEN
       RETURN QUERY
-      SELECT 
+      SELECT
         t1.id, t1.name, t1.logo_url,
         t2.id, t2.name, t2.logo_url,
-        p.name
+        p.name,
+        COALESCE(ARRAY(SELECT pt.season FROM player_teams pt WHERE pt.player_id = v_player_id AND pt.team_id = v_team1_id ORDER BY pt.season), ARRAY[]::INTEGER[]) AS team1_seasons,
+        COALESCE(ARRAY(SELECT pt.season FROM player_teams pt WHERE pt.player_id = v_player_id AND pt.team_id = v_team2_id ORDER BY pt.season), ARRAY[]::INTEGER[]) AS team2_seasons
       FROM teams t1
       CROSS JOIN teams t2
       CROSS JOIN players p
@@ -146,4 +150,4 @@ BEGIN
   END IF;
 
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
