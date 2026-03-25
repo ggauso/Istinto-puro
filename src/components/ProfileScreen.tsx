@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useAuthStore } from '../authStore';
+import { TierBadge } from './TierBadge';
+import { calculateTier, getTierProgress } from '../lib/game-utils';
 import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -102,9 +104,13 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const matchesWon = profile.matches_won || 0;
   const totalScore = profile.total_score || 0;
 
-  const winRate = matchesPlayed > 0 
-    ? Math.round((matchesWon / matchesPlayed) * 100) 
+  const winRate = matchesPlayed > 0
+    ? Math.round((matchesWon / matchesPlayed) * 100)
     : 0;
+
+  // Calcolo tier
+  const tier = calculateTier(totalScore);
+  const tierProgress = getTierProgress(totalScore);
 
   return (
     <div className="min-h-screen bg-[#121212] text-white p-4 md:p-8">
@@ -235,9 +241,12 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
               </div>
               
               <div className="text-center md:text-left flex-1">
-                <h1 className="text-3xl font-bold mb-1">
-                  {profile.first_name ? `${profile.first_name} ${profile.last_name || ''}` : user.email?.split('@')[0]}
-                </h1>
+                <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
+                  <h1 className="text-3xl font-bold">
+                    {profile.first_name ? `${profile.first_name} ${profile.last_name || ''}` : user.email?.split('@')[0]}
+                  </h1>
+                  <TierBadge tier={tier} size="md" showLabel={true} />
+                </div>
                 <p className="text-gray-400 mb-2">{user.email}</p>
                 {profile.favorite_team && (
                   <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-sm font-medium text-[#FFD700]">
@@ -294,7 +303,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Win Rate</span>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.4 }}
@@ -303,8 +312,25 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center mb-3">
               <Trophy className="w-6 h-6 text-purple-400" />
             </div>
-            <span className="text-4xl font-black mb-1">{totalScore}</span>
+            <span className="text-4xl font-black mb-1">{totalScore.toLocaleString('it-IT')}</span>
             <span className="text-sm text-gray-400 uppercase tracking-wider font-bold">Punti Totali</span>
+            {tier !== 'diamond' && (
+              <div className="mt-3 w-full">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Progresso</span>
+                  <span>{tierProgress}%</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${tierProgress}%`,
+                      backgroundColor: '#FFD700'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
 

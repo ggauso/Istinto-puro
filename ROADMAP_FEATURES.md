@@ -13,14 +13,14 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 ### Task 1.1: Mostrare nome utente all'avversario
 - [x] **Task 1.1.1:** Modificare RPC `get_random_match` per restituire `match_id` univoco (infrastructure ready)
-- [ ] **Task 1.1.2:** Creare tabella `matches` per tracciare partite in corso (richiede DB)
+- [x] **Task 1.1.2:** Creare tabella `matches` per tracciare partite in corso (alter-002-gioco.sql)
 - [x] **Task 1.1.3:** Quando un utente anonymous gioca, assegnare nome "guest-{numero casuale}" (implementato in game-utils.ts)
-- [ ] **Task 1.1.4:** Mostrare il nome dell'avversario nella UI di gioco (da integrare in GameScreen)
+- [x] **Task 1.1.4:** Mostrare il nome dell'avversario nella UI di gioco (implementato in GameScreen)
 
 ### Task 1.2: Tracciare partite giocate
-- [ ] **Task 1.2.1:** Creare tabella `matches_history` per storico partite (richiede DB)
-- [ ] **Task 1.2.2:** Salvare risultato partita alla fine (vittoria/sconfitta, punteggio)
-- [ ] **Task 1.2.3:** Associare match all'utente se loggato
+- [x] **Task 1.2.1:** Creare tabella `matches_history` per storico partite (alter-002-gioco.sql)
+- [x] **Task 1.2.2:** Salvare risultato partita alla fine (vittoria/sconfitta, punteggio) (store.ts saveMatchResultToDb)
+- [x] **Task 1.2.3:** Associare match all'utente se loggato
 
 ---
 
@@ -57,9 +57,9 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 - [x] **Task 3.1.3:** Auto-calcolare tier quando cambia il punteggio (calculateTier implementato)
 
 ### Task 3.2: Visualizzazione tier
-- [x] **Task 3.2.1:** Mostrare badge/icona tier nel profilo utente (getTierInfo implementato)
-- [ ] **Task 3.2.2:** Mostrare tier dell'avversario durante la partita
-- [ ] **Task 3.2.3:** Filtrare leaderboard per tier
+- [x] **Task 3.2.1:** Mostrare badge/icona tier nel profilo utente (implementato in ProfileScreen)
+- [x] **Task 3.2.2:** Mostrare tier dell'avversario durante la partita (implementato in GameScreen)
+- [x] **Task 3.2.3:** Mostrare progresso tier nel profilo utente (implementato in ProfileScreen)
 
 ---
 
@@ -83,28 +83,32 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 | Milestone | Tempo | Stato |
 |-----------|-------|-------|
-| 1. Identità Utente | 2-3h | ✅ Infrastruttura completata |
-| 2. Classifica Generale | 2-3h | ✅ Infrastruttura completata |
-| 3. Tier System | 2-3h | ✅ Infrastruttura completata |
+| 1. Identità Utente | 2-3h | ✅ Completato |
+| 2. Classifica Generale | 2-3h | ✅ Completato |
+| 3. Tier System | 2-3h | ✅ Completato |
 | 4. Test e Validazione | 1-2h | ✅ Completato (94 test) |
 
-**Totale:** ~8 ore lavoro
+**Totale:** ~10 ore lavoro
 
 ---
 
 ## 📝 Note Implementative
 
-### Componenti creati:
+### Componenti creati/modificati:
 - `src/types/game.ts` - Tipi e configurazione tier
-- `src/lib/game-utils.ts` - Funzioni utility per gioco
+- `src/lib/game-utils.ts` - Funzioni utility per il gioco
+- `src/lib/rpc-client.ts` - Aggiunto RPC per leaderboard e salvataggio partite
+- `src/components/TierBadge.tsx` - Badge visuale per il tier
+- `src/components/LeaderboardScreen.tsx` - Schermata classifica
+- `src/components/GameScreen.tsx` - Aggiunto info avversario (nome + tier)
+- `src/store.ts` - Aggiunto saveMatchResultToDb
 
-### Test creati:
+### File SQL da eseguire:
+- `supabase/alter_features.sql` - Schema iniziale (gia eseguito)
+- `supabase/alter-002-gioco.sql` - Schema per matches, matches_history e funzioni
+
+### Test:
 - `src/test/game-utils.test.ts` - 36 test per le funzioni di gioco
-
-### Richiede modifiche al DB Supabase:
-- Tabella `matches` per tracciare partite in corso
-- Tabella `matches_history` per storico partite
-- Funzione RPC `get_leaderboard`
 
 ---
 

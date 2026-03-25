@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
+import { useAuthStore } from '../authStore';
 import { CircularTimer } from './CircularTimer';
+import { TierBadge } from './TierBadge';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Flag } from 'lucide-react';
+import { Home, Flag, User, Bot } from 'lucide-react';
 
 export function GameScreen() {
   const { 
@@ -137,12 +139,27 @@ export function GameScreen() {
               <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 2 ? 'bg-red-500' : 'bg-zinc-700'}`} />
               <div className={`w-3 h-3 rounded-full ${opponentRoundsWon >= 1 ? 'bg-red-500' : 'bg-zinc-700'}`} />
             </div>
+            {/* Opponent Info */}
+            <div className="flex items-center gap-2 mt-2 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-zinc-700">
+              <User className="w-4 h-4 text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-300">
+                {match?.opponent_name || 'Avversario'}
+              </span>
+              {match?.opponent_tier && (
+                <TierBadge tier={match.opponent_tier} size="sm" showLabel={false} />
+              )}
+            </div>
           </div>
         )}
 
         {gameMode === 'ai' && (
           <div className="flex flex-col items-end mt-2">
             <div className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Round {round}</div>
+            <div className="flex items-center gap-2 mt-2 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-zinc-700">
+              <Bot className="w-4 h-4 text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-300">AI</span>
+              <TierBadge tier="bronze" size="sm" showLabel={false} />
+            </div>
           </div>
         )}
       </div>

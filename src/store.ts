@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuthStore } from './authStore';
+import { saveMatchResult } from './lib/rpc-client';
+import { calculateTier, generateGuestName } from './lib/game-utils';
 
 export interface Team {
   id: number;
@@ -16,6 +18,9 @@ export interface MatchData {
   team2_id: number;
   team2_name: string;
   team2_logo: string;
+  // Info avversario per feature di gioco
+  opponent_name?: string;
+  opponent_tier?: string;
 }
 
 interface GameState {
@@ -54,6 +59,7 @@ interface GameState {
   abandonMatch: () => void;
   resetGame: () => void;
   setStatus: (status: GameState['status']) => void;
+  saveMatchResultToDb: (isWin: boolean, finalScore: number) => Promise<void>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
@@ -462,4 +468,35 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setStatus: (status) => set({ status }),
+
+  saveMatchResultToDb: async (isWin: boolean, finalScore: number) => {
+    const { match, gameMode, score, selectedDifficulty } = get();
+    const { user } = useAuthStore.getState();
+
+    if (!user || !match) return;
+
+    // Determina il nome del giocatore
+    const { profile } = useAuthStore.getState();
+    const playerName = profile?.first_name || generateGuestName();
+
+    // Determina nome e tier dell'avversario
+    const opponentName = gameMode === 'ai' ? 'AI' : (match.opponent_name || 'Avversario');
+    const opponentTier = match.opponent_tier || 'bronze';
+
+    // Calcola il tier del giocatore corrente
+    const currentTotalScore = (profile?.total_score || 0) + score;
+    const playerTier = calculateTier(currentTotalScore);
+
+    // Salva il risultato nel database (non bloccante)
+    saveMatchResult(
+      playerName,
+      opponentName,
+      playerTier,
+      opponentTier,
+      isWin ? score : 0,
+      isWin ? 0 : score,
+      isWin,
+      selectedDifficulty
+    ).catch(err => console.error('Errore salvataggio risultato:', err));
+  },
 }));
