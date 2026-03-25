@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { getLeaderboard, getUserRank } from '../lib/rpc-client'
+import { getLeaderboard, getWeeklyLeaderboard, getMonthlyLeaderboard, getUserRank } from '../lib/rpc-client'
 import { TierBadge } from './TierBadge'
 import { Tier, formatNumber, sortLeaderboard } from '../lib/game-utils'
 import { motion } from 'motion/react'
@@ -34,15 +34,32 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
     setError(null)
 
     try {
-      const result = await getLeaderboard(50, null)
+      let result
+
+      // Seleziona la funzione corretta in base al tipo di classifica
+      switch (leaderboardType) {
+        case 'weekly':
+          result = await getWeeklyLeaderboard(50)
+          break
+        case 'monthly':
+          result = await getMonthlyLeaderboard(50)
+          break
+        default:
+          result = await getLeaderboard(50, null)
+      }
 
       if (result.success) {
         const sorted = sortLeaderboard(result.entries)
         setEntries(sorted)
 
-        const rankResult = await getUserRank()
-        if (rankResult.success && rankResult.rank) {
-          setUserRank(rankResult.rank)
+        // Per la classifica all-time mostriamo il rank
+        if (leaderboardType === 'all_time') {
+          const rankResult = await getUserRank()
+          if (rankResult.success && rankResult.rank) {
+            setUserRank(rankResult.rank)
+          }
+        } else {
+          setUserRank(null) // Non mostriamo rank per classifiche temporanee
         }
       } else {
         setError(result.error || 'Errore nel caricamento')

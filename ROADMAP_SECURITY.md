@@ -97,10 +97,10 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [x] Logout su errore auth
   - [x] Logout su timeout
   - [x] Logout su password change
-- [ ] **Task 2.1.3:** Rate limiting su login
-  - [ ] Max 5 tentativi/minuto per IP/email
-  - [ ] Lockout 15min dopo 5 fallimenti
-  - [ ] Notifica email per lockout
+- [x] **Task 2.1.3:** Rate limiting su login
+  - [x] Max 5 tentativi/minuto per email
+  - [x] Lockout 15min dopo 5 fallimenti
+  - [ ] **(OPZIONALE)** Notifica email per lockout
 
 ### Task 2.2: Password Security
 - [x] **Task 2.2.1:** Implementare password strength requirements

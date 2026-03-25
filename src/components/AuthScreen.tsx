@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { checkEmailLocked, recordLoginAttempt } from '../lib/rpc-client';
 import { LogIn, UserPlus, ArrowLeft, Mail, Lock, User, Calendar, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -116,15 +117,34 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         }, 2000);
         return; // evitiamo il finally che rimette a posto lo stato
       } else {
+        // Rate limiting: verifica se l'email è bloccata
+        const rateCheck = await checkEmailLocked(email);
+        if (rateCheck.locked) {
+          const minutes = Math.ceil(rateCheck.remainingSeconds / 60);
+          throw new Error(`Troppi tentativi falliti. Riprova tra ${minutes} minuto/i.`);
+        }
+
+        // Tentativo di login
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
+        // Registra il tentativo (fallito o riuscito)
+        const clientIp = 'client-ip'; // In production, usare l'IP reale del client
+        await recordLoginAttempt(email, clientIp, !signInError);
+
         if (signInError) throw signInError;
         onBack();
       }
     } catch (err: any) {
+      // Registra tentativo fallito anche in caso di errore (se non già fatto)
+      if (mode === 'login' && err.message?.includes('troppi tentativi')) {
+        // Già gestito sopra
+      } else if (mode === 'login') {
+        const clientIp = 'client-ip';
+        await recordLoginAttempt(email, clientIp, false).catch(() => {});
+      }
       setError(err.message || 'Si è verificato un errore durante l\'autenticazione.');
     } finally {
       setLoading(false);

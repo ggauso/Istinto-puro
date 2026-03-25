@@ -37,8 +37,9 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 ### Task 2.2: Classifiche temporali
 - [x] **Task 2.2.1:** Aggiungere campi per classifiche settimanali/mensili (infrastructure ready)
-- [ ] **Task 2.2.2:** Resettare classifiche temporali ogni settimana/mese
-- [ ] **Task 2.2.3:** UI per commutare tra classifiche
+- [x] **Task 2.2.2:** Resettare classifiche temporali ogni settimana/mese (automatico con get_week_start/get_month_start)
+- [x] **Task 2.2.3:** UI per commutare tra classifiche (LeaderboardScreen.tsx)
+- [ ] **(OPZIONALE) Task 2.2.4:** Creare cron job per cleanup automatico vecchie classifiche (eseguire `cleanup_old_leaderboards()` periodicamente)
 
 ---
 

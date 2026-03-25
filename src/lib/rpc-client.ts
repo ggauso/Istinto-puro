@@ -677,6 +677,78 @@ export async function getUserInfo(userId: string): Promise<{
   }
 }
 
+// =====================================================
+// RATE LIMITING LOGIN
+// =====================================================
+
+/**
+ * Verifica se un'email è bloccata per troppi tentativi di login
+ */
+export async function checkEmailLocked(email: string): Promise<{
+  locked: boolean
+  remainingSeconds: number
+}> {
+  try {
+    const { data, error } = await supabase.rpc('is_email_locked', {
+      p_email: email
+    })
+
+    if (error) throw error
+
+    const remainingResult = await supabase.rpc('get_login_lockout_remaining', {
+      p_email: email
+    })
+
+    return {
+      locked: data || false,
+      remainingSeconds: remainingResult.data || 0
+    }
+  } catch (error) {
+    // In caso di errore, permetti il login (fail open)
+    console.error('Rate limit check failed:', error)
+    return { locked: false, remainingSeconds: 0 }
+  }
+}
+
+/**
+ * Verifica se un IP è bloccato per troppi tentativi di login
+ */
+export async function checkIpLocked(ip: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('is_ip_locked', {
+      p_ip: ip
+    })
+
+    if (error) throw error
+
+    return data || false
+  } catch (error) {
+    // In caso di errore, permetti il login (fail open)
+    console.error('IP rate limit check failed:', error)
+    return false
+  }
+}
+
+/**
+ * Registra un tentativo di login (fallito o riuscito)
+ */
+export async function recordLoginAttempt(
+  email: string,
+  ip: string,
+  success: boolean
+): Promise<void> {
+  try {
+    await supabase.rpc('record_login_attempt', {
+      p_email: email,
+      p_ip: ip,
+      p_success: success
+    })
+  } catch (error) {
+    // Non blocchiamo il flusso se la registrazione fallisce
+    console.error('Failed to record login attempt:', error)
+  }
+}
+
 export {
   // Re-export utility functions for convenience
   isValidTeamId,
