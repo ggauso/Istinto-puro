@@ -315,6 +315,210 @@ export async function updateProfile(
   }
 }
 
+// =====================================================
+// LEADERBOARD E CLASSIFICHE
+// =====================================================
+
+/**
+ * Ottieni la classifica globale
+ */
+export async function getLeaderboard(
+  limit: number = 100,
+  tier?: string | null
+): Promise<{
+  success: boolean
+  entries: Array<{
+    rank: number
+    userId: string
+    displayName: string
+    totalScore: number
+    tier: string
+    matchesPlayed: number
+    matchesWon: number
+    winRate: number
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_leaderboard', {
+      p_limit: limit,
+      p_tier: tier || null
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      entries: data?.map((entry: any) => ({
+        rank: entry.rank,
+        userId: entry.user_id,
+        displayName: entry.display_name,
+        totalScore: entry.total_score,
+        tier: entry.tier,
+        matchesPlayed: entry.matches_played,
+        matchesWon: entry.matches_won,
+        winRate: entry.win_rate
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      entries: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Salva il risultato di una partita
+ */
+export async function saveMatchResult(
+  playerName: string,
+  opponentName: string,
+  playerTier: string,
+  opponentTier: string,
+  playerScore: number,
+  opponentScore: number,
+  isWin: boolean,
+  difficulty: number = 1
+): Promise<{
+  success: boolean
+  matchId: string | null
+  error: string | null
+}> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, matchId: null, error: 'Utente non autenticato' }
+    }
+
+    const { data, error } = await supabase.rpc('save_match_result', {
+      p_user_id: user.id,
+      p_player_name: playerName,
+      p_opponent_name: opponentName,
+      p_player_tier: playerTier,
+      p_opponent_tier: opponentTier,
+      p_player_score: playerScore,
+      p_opponent_score: opponentScore,
+      p_is_win: isWin,
+      p_difficulty: difficulty
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      matchId: data || null,
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      matchId: null,
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni la posizione in classifica dell'utente corrente
+ */
+export async function getUserRank(): Promise<{
+  success: boolean
+  rank: number | null
+  error: string | null
+}> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, rank: null, error: 'Utente non autenticato' }
+    }
+
+    const { data, error } = await supabase.rpc('get_user_rank', {
+      p_user_id: user.id
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      rank: data || null,
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      rank: null,
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni lo storico partite dell'utente
+ */
+export async function getMatchHistory(limit: number = 20): Promise<{
+  success: boolean
+  matches: Array<{
+    id: string
+    playerName: string
+    opponentName: string
+    playerScore: number
+    opponentScore: number
+    isWin: boolean
+    playedAt: string
+  }>
+  error: string | null
+}> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, matches: [], error: 'Utente non autenticato' }
+    }
+
+    const { data, error } = await supabase
+      .from('matches_history')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('played_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      matches: data?.map((m: any) => ({
+        id: m.id,
+        playerName: m.player_name,
+        opponentName: m.opponent_name,
+        playerScore: m.player_score,
+        opponentScore: m.opponent_score,
+        isWin: m.is_win,
+        playedAt: m.played_at
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      matches: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
 export {
   // Re-export utility functions for convenience
   isValidTeamId,

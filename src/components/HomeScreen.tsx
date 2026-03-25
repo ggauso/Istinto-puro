@@ -22,15 +22,26 @@ const DIFFICULTIES = [
 interface HomeScreenProps {
   onNavigateToAuth: () => void;
   onNavigateToProfile: () => void;
+  onNavigateToLeaderboard: () => void;
 }
 
-export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
+export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateToLeaderboard }: HomeScreenProps) {
   const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame, errorMsg, setErrorMsg } = useGameStore();
   const { user, profile } = useAuthStore();
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-6 font-sans relative">
-      <div className="absolute top-6 right-6">
+      <div className="absolute top-6 right-6 flex items-center gap-2">
+        {user && (
+          <button
+            onClick={onNavigateToLeaderboard}
+            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
+            title="Classifica"
+          >
+            <Trophy className="w-4 h-4 text-[#FFD700]" />
+            <span className="font-medium text-sm">Classifica</span>
+          </button>
+        )}
         {user ? (
           <button 
             onClick={onNavigateToProfile}

@@ -11,11 +11,12 @@ import { HomeScreen } from './components/HomeScreen';
 import { GameScreen } from './components/GameScreen';
 import { AuthScreen } from './components/AuthScreen';
 import { ProfileScreen } from './components/ProfileScreen';
+import { LeaderboardScreen } from './components/LeaderboardScreen';
 
 export default function App() {
   const { status } = useGameStore();
   const { initialize, loading } = useAuthStore();
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard'>('home');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
@@ -62,10 +63,12 @@ export default function App() {
         }}
       />}
       {currentScreen === 'profile' && <ProfileScreen onBack={() => setCurrentScreen('home')} />}
+      {currentScreen === 'leaderboard' && <LeaderboardScreen onBack={() => setCurrentScreen('home')} />}
       {currentScreen === 'home' && (
-        <HomeScreen 
+        <HomeScreen
           onNavigateToAuth={() => setCurrentScreen('auth')}
           onNavigateToProfile={() => setCurrentScreen('profile')}
+          onNavigateToLeaderboard={() => setCurrentScreen('leaderboard')}
         />
       )}
     </div>
