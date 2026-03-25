@@ -7,10 +7,14 @@
  * - Timeout di 10 secondi
  * - Retry automatici (max 3)
  * - Formattazione errori friendly
+ * - Circuit breaker pattern
+ * - Error logging
  */
 
 import { supabase } from './supabase'
 import { isValidTeamId, isValidLeagueId, formatRpcError } from '../utils'
+import { rpcCircuitBreaker } from './circuit-breaker'
+import { logRpcError } from './error-logger'
 import type { PlayerSearchResult } from '../types'
 
 // Timeout e retry config
@@ -65,6 +69,7 @@ export async function getRandomMatch(
     team2Seasons: number[]
   }
   error: string | null
+  isFallback?: boolean
 }> {
   // Validazione input - permette null (nessun filtro), stringhe vuote, e stringhe fino a 20 char
   if (leagueId !== null && leagueId !== '' && leagueId.length > 20) {
@@ -75,7 +80,8 @@ export async function getRandomMatch(
     difficulty = 1
   }
 
-  try {
+  // Definisci l'operazione RPC
+  const rpcOperation = async () => {
     // Chiamata RPC con timeout
     const rpcCall = supabase.rpc('get_random_match', {
       p_league_id: leagueId || null,
@@ -101,11 +107,34 @@ export async function getRandomMatch(
 
     // Controllo: almeno un team deve essere valido
     if (!match.team1 || !match.team2) {
-      return { success: false, match: null, error: 'Nessun giocatore valido trovato tra i team selezionati' }
+      throw new Error('Nessun giocatore valido trovato tra i team selezionati')
     }
 
+    return match
+  }
+
+  try {
+    // Esegui con circuit breaker
+    const match = await rpcCircuitBreaker.execute(rpcOperation)
     return { success: true, match, error: null }
-  } catch (error) {
+  } catch (error: any) {
+    // Logga l'errore
+    await logRpcError('get_random_match', error, {
+      league_id: leagueId,
+      difficulty,
+      exclude_team_ids: excludeTeamIds.map(String),
+    })
+
+    // Se il circuit breaker ha restituito un fallback
+    if (error?.isFallback) {
+      return {
+        success: true,
+        match: error.match,
+        error: 'Usato match pre-generato per problemi di connessione',
+        isFallback: true
+      }
+    }
+
     // Formatta errore friendly
     return {
       success: false,
