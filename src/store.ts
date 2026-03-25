@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuthStore } from './authStore';
-import { saveMatchResult } from './lib/rpc-client';
+import { saveMatchResult, getUserInfo } from './lib/rpc-client';
 import { calculateTier, generateGuestName } from './lib/game-utils';
 
 export interface Team {
@@ -19,6 +19,7 @@ export interface MatchData {
   team2_name: string;
   team2_logo: string;
   // Info avversario per feature di gioco
+  opponent_id?: string;
   opponent_name?: string;
   opponent_tier?: string;
 }
@@ -47,12 +48,15 @@ interface GameState {
   lastScoreAdded: number;
   lastRarity: number;
   lastCombo: number;
-  
+
+  // Info avversario per PvP
+  opponentInfo: { nickname: string; tier: string } | null;
+
   setGameMode: (mode: 'pvp' | 'ai') => void;
   setSelectedLeague: (leagueId: number | null) => void;
   setSelectedDifficulty: (difficulty: number) => void;
   findMatch: () => void;
-  joinGameRoom: (roomId: string, isHost: boolean) => void;
+  joinGameRoom: (roomId: string, isHost: boolean, opponentUserId?: string, opponentNicknameFromPresence?: string | null) => void;
   fetchMatchAndBroadcast: () => Promise<void>;
   validatePlayer: (playerName: string) => Promise<boolean>;
   tickTimer: () => void;
@@ -87,6 +91,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastScoreAdded: 0,
   lastRarity: 1,
   lastCombo: 1,
+  opponentInfo: null,
 
   setGameMode: (mode) => set({ gameMode: mode }),
   setSelectedLeague: (leagueId) => set({ selectedLeague: leagueId }),
@@ -114,13 +119,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     channel
       .on('broadcast', { event: 'match_found' }, (payload) => {
-        const { player1, player2, roomId } = payload.payload;
+        const { player1, player2, player1UserId, player2UserId, player1Nickname, player2Nickname, roomId } = payload.payload;
         const state = get();
+        console.log('match_found broadcast - my playerId:', state.playerId, 'player1:', player1, 'player2:', player2, 'player1UserId:', player1UserId, 'player2UserId:', player2UserId);
         if (state.status === 'searching' && (state.playerId === player1 || state.playerId === player2)) {
           console.log('Match trovato via broadcast!');
-          const otherId = state.playerId === player1 ? player2 : player1;
-          const isHost = state.playerId < otherId;
-          get().joinGameRoom(roomId, isHost);
+          // If I am player1, opponent is player2
+          // If I am player2, opponent is player1
+          const isPlayer1 = state.playerId === player1;
+          const opponentUserId = isPlayer1 ? player2UserId : player1UserId;
+          const opponentNickname = isPlayer1 ? player2Nickname : player1Nickname;
+          const isHost = state.playerId < (isPlayer1 ? player2 : player1);
+          console.log('Calculated - isPlayer1:', isPlayer1, 'opponentUserId:', opponentUserId, 'opponentNickname:', opponentNickname, 'isHost:', isHost);
+          get().joinGameRoom(roomId, isHost, opponentUserId, opponentNickname);
         }
       })
       .on('presence', { event: 'sync' }, () => {
@@ -134,33 +145,84 @@ export const useGameStore = create<GameState>((set, get) => ({
         const otherPlayer = presences.find(p => p.playerId !== state.playerId && p.status === 'searching');
 
         if (otherPlayer) {
-          console.log('Avversario trovato in presence!', otherPlayer.playerId);
+          console.log('Avversario trovato in presence!', otherPlayer.playerId, 'userId:', otherPlayer.userId, 'nickname:', otherPlayer.nickname);
           // Ordine deterministico per decidere chi è l'host
           const isHost = state.playerId < otherPlayer.playerId;
           const roomId = `room_${isHost ? state.playerId : otherPlayer.playerId}_${isHost ? otherPlayer.playerId : state.playerId}`;
           
           // Invia un broadcast per avvisare l'avversario prima di uscire dal canale
+          const currentUser = useAuthStore.getState().user;
+          const currentUserId = currentUser?.id || null;
+          const currentNickname = currentUser?.nickname || currentUser?.first_name || null;
           channel.send({
             type: 'broadcast',
             event: 'match_found',
-            payload: { player1: state.playerId, player2: otherPlayer.playerId, roomId }
+            payload: {
+              player1: state.playerId,
+              player2: otherPlayer.playerId,
+              player1UserId: currentUserId,  // current player's userId
+              player1Nickname: currentNickname,
+              player2UserId: otherPlayer.userId,  // opponent's userId
+              player2Nickname: otherPlayer.nickname || null,
+              roomId
+            }
           }).then(() => {
-            get().joinGameRoom(roomId, isHost);
+            get().joinGameRoom(roomId, isHost, otherPlayer.userId, otherPlayer.nickname || null);
           });
         }
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           console.log('In ricerca...');
-          await channel.track({ playerId, status: 'searching' });
+          const { user } = useAuthStore.getState();
+          await channel.track({
+            playerId,
+            userId: user?.id || null,
+            nickname: user?.nickname || user?.first_name || null,
+            status: 'searching'
+          });
         }
       });
   },
 
-  joinGameRoom: (roomId: string, isHost: boolean) => {
+  joinGameRoom: async (roomId: string, isHost: boolean, opponentUserId?: string, opponentNicknameFromPresence?: string | null) => {
     const state = get();
     if (state.status !== 'searching') return;
-    set({ status: 'joining', isHost });
+
+    const currentUser = useAuthStore.getState().user;
+    console.log('joinGameRoom - myUserId:', currentUser?.id, 'opponentUserId:', opponentUserId, 'isHost:', isHost, 'opponentNicknameFromPresence:', opponentNicknameFromPresence);
+
+    // Fetch opponent info if we have their user ID (logged-in PvP match)
+    let opponentInfoFetched: { nickname: string; tier: string } | null = null;
+    if (opponentUserId && state.gameMode === 'pvp') {
+      console.log('Fetching opponent info from DB for:', opponentUserId);
+      const { user: oppUser, success } = await getUserInfo(opponentUserId);
+      console.log('getUserInfo result:', { success, fields: oppUser ? {nickname: oppUser.nickname, firstName: oppUser.firstName, lastName: oppUser.lastName} : null });
+      if (oppUser) {
+        opponentInfoFetched = {
+          nickname: oppUser.nickname || oppUser.firstName || oppUser.lastName || opponentNicknameFromPresence || 'Avversario',
+          tier: oppUser.tier || 'bronze'
+        };
+      } else {
+        // Fallback: use nickname from presence
+        console.log('getUserInfo failed, using fallback:', opponentNicknameFromPresence);
+        const fallbackName = opponentNicknameFromPresence || `Giocatore ${Math.floor(Math.random() * 9000) + 1000}`;
+        opponentInfoFetched = {
+          nickname: fallbackName,
+          tier: 'bronze'
+        };
+      }
+    } else if (state.gameMode === 'pvp') {
+      // Guest opponent - use nickname from presence or generate a name
+      const guestName = opponentNicknameFromPresence || `Giocatore ${Math.floor(Math.random() * 9000) + 1000}`;
+      opponentInfoFetched = {
+        nickname: guestName,
+        tier: 'bronze'
+      };
+    }
+
+    console.log('Setting opponentInfo:', opponentInfoFetched);
+    set({ status: 'joining', isHost, opponentInfo: opponentInfoFetched });
 
     const { matchmakingChannel, gameChannel: existingGameChannel } = get();
     if (matchmakingChannel) {
@@ -181,10 +243,24 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     channel
       .on('broadcast', { event: 'game_start' }, (payload) => {
-        console.log('Partita iniziata!');
+        const myUserId = useAuthStore.getState().user?.id || 'guest';
+        console.log('=== GAME_START RECEIVED === myUserId:', myUserId);
+        console.log('1. opponentInfo from store:', get().opponentInfo);
         if (readyInterval) clearInterval(readyInterval);
+        const state = get();
+        // Use local opponentInfo - already set correctly in joinGameRoom
+        const incomingMatch = payload.payload.match || {};
+        console.log('2. incomingMatch.opponent_name:', incomingMatch.opponent_name);
+        const finalNickname = state.opponentInfo?.nickname || incomingMatch.opponent_name || 'Avversario';
+        console.log('3. finalNickname chosen:', finalNickname, 'because state.opponentInfo:', state.opponentInfo?.nickname);
+        const mergedMatch = {
+          ...incomingMatch,
+          opponent_name: finalNickname,
+          opponent_tier: state.opponentInfo?.tier || incomingMatch.opponent_tier || 'bronze'
+        };
+        console.log('4. FINAL mergedMatch OPPONENT:', JSON.stringify({opponent_name: mergedMatch.opponent_name, opponent_tier: mergedMatch.opponent_tier}));
         set((state) => ({
-          match: payload.payload.match,
+          match: mergedMatch,
           status: 'playing',
           timeLeft: 10,
           correctAnswer: payload.payload.correctAnswer,
@@ -192,6 +268,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           roundStartTime: Date.now(),
           round: state.round + 1
         }));
+
+        // Send acknowledgment back to host
+        console.log('Sending game_start_ack to host...');
+        channel.send({ type: 'broadcast', event: 'game_start_ack' });
+      })
+      .on('broadcast', { event: 'game_start_ack' }, (payload) => {
+        console.log('Received game_start_ack from guest!');
+        if (readyInterval) clearInterval(readyInterval);
       })
       .on('broadcast', { event: 'player_won' }, (payload) => {
         if (payload.payload.playerId !== get().playerId) {
@@ -219,23 +303,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       })
       .on('broadcast', { event: 'guest_ready' }, () => {
+        console.log('Received guest_ready, isHost:', isHost, 'current status:', get().status);
         if (isHost) {
           const state = get();
           if (state.status === 'joining') {
             console.log('Guest pronto, recupero match...');
             set({ status: 'starting' });
+            console.log('Calling fetchMatchAndBroadcast...');
             get().fetchMatchAndBroadcast();
           } else if (state.status === 'playing') {
             console.log('Guest pronto ma partita già iniziata, reinvio match...');
+            // Include opponent info in the payload
+            const matchWithOpponent = {
+              ...state.match,
+              opponent_name: state.opponentInfo?.nickname || state.match?.opponent_name || 'Avversario',
+              opponent_tier: state.opponentInfo?.tier || state.match?.opponent_tier || 'bronze'
+            };
+            console.log('Re-sending match with opponent:', matchWithOpponent?.opponent_name);
             channel.send({
               type: 'broadcast',
               event: 'game_start',
-              payload: { match: state.match, correctAnswer: state.correctAnswer, correctAnswerSeasons: state.correctAnswerSeasons }
+              payload: { match: matchWithOpponent, correctAnswer: state.correctAnswer, correctAnswerSeasons: state.correctAnswerSeasons }
             });
           }
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status, err) => {
+        console.log('*** Game channel subscription status:', status, 'error:', err);
+        // Don't auto-resubscribe - it causes conflicts with sending
         if (status === 'SUBSCRIBED') {
           if (!isHost) {
             console.log('Guest iscritto, invio guest_ready...');
@@ -299,19 +394,62 @@ export const useGameStore = create<GameState>((set, get) => ({
         const newRecentTeams = [...recentTeams, m.team1_id, m.team2_id].slice(-20); // Keep last 20 teams
         const correctAnswerSeasons = { team1: team1Seasons, team2: team2Seasons };
 
-        const { gameChannel, gameMode } = get();
+        const { gameChannel, gameMode, opponentInfo } = get();
+        console.log('Host sending game_start, gameChannel exists:', !!gameChannel, 'gameMode:', gameMode, 'opponentInfo:', opponentInfo);
         if (gameChannel && matchData && gameMode === 'pvp') {
-          gameChannel.send({
-            type: 'broadcast',
-            event: 'game_start',
-            payload: { match: matchData, correctAnswer: fetchedAnswer, correctAnswerSeasons }
-          });
+          console.log('HOST ACTUALLY SENDING game_start...');
+          // Include opponent info in the payload
+          const matchDataWithOpponent = {
+            ...matchData,
+            opponent_name: opponentInfo?.nickname || 'Avversario',
+            opponent_tier: opponentInfo?.tier || 'bronze'
+          };
+          console.log('Sending match with opponent_name:', matchDataWithOpponent.opponent_name);
+
+          // Send game_start with retry mechanism
+          let sent = false;
+          const sendGameStart = () => {
+            console.log('Sending game_start with opponent info...');
+            gameChannel.send({
+              type: 'broadcast',
+              event: 'game_start',
+              payload: {
+                match: matchDataWithOpponent,
+                correctAnswer: fetchedAnswer,
+                correctAnswerSeasons
+              }
+            });
+          };
+          sendGameStart();
+
+          // Retry after 1 second if no ack received
+          setTimeout(() => {
+            if (get().status !== 'playing') {
+              console.log('No ack received, retrying game_start...');
+              sendGameStart();
+            }
+          }, 1500);
+
+          // Retry after 3 seconds as final attempt
+          setTimeout(() => {
+            if (get().status !== 'playing') {
+              console.log('Still no ack, final retry...');
+              sendGameStart();
+            }
+          }, 3500);
         }
+
+        // Include opponent info in host's own match state too
+        const matchDataForHost = gameMode === 'pvp' ? {
+          ...matchData,
+          opponent_name: opponentInfo?.nickname || 'Avversario',
+          opponent_tier: opponentInfo?.tier || 'bronze'
+        } : matchData;
 
         set({
           recentTeams: newRecentTeams,
           correctAnswerSeasons,
-          match: matchData,
+          match: matchDataForHost,
           timeLeft: gameMode === 'ai' ? 15 : 10,
           status: 'playing',
           correctAnswer: fetchedAnswer,
@@ -451,19 +589,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { gameChannel, matchmakingChannel, gameMode } = get();
     if (gameChannel) supabase.removeChannel(gameChannel);
     if (matchmakingChannel) supabase.removeChannel(matchmakingChannel);
-    
-    set({ 
-      status: 'idle', 
-      score: 0, 
-      timeLeft: gameMode === 'ai' ? 15 : 10, 
-      match: null, 
-      gameChannel: null, 
+
+    set({
+      status: 'idle',
+      score: 0,
+      timeLeft: gameMode === 'ai' ? 15 : 10,
+      match: null,
+      gameChannel: null,
       matchmakingChannel: null,
       round: 0,
       playerRoundsWon: 0,
       opponentRoundsWon: 0,
       streak: 0,
-      isHost: false
+      isHost: false,
+      opponentInfo: null
     });
   },
 

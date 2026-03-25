@@ -15,6 +15,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [editForm, setEditForm] = useState({
     first_name: profile?.first_name || '',
     last_name: profile?.last_name || '',
+    nickname: profile?.nickname || '',
     favorite_team: profile?.favorite_team || '',
     avatar_url: profile?.avatar_url || ''
   });
@@ -157,6 +158,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                     setEditForm({
                       first_name: profile.first_name || '',
                       last_name: profile.last_name || '',
+                      nickname: profile.nickname || '',
                       favorite_team: profile.favorite_team || '',
                       avatar_url: profile.avatar_url || ''
                     });
@@ -168,6 +170,16 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-1">Nickname</label>
+                  <input
+                    type="text"
+                    value={editForm.nickname}
+                    onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    placeholder="Nome visualizzato nelle sfide"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-zinc-400 mb-1">Nome</label>
                   <input

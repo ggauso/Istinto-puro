@@ -7,6 +7,7 @@ export interface Profile {
   id: string;
   first_name: string | null;
   last_name: string | null;
+  nickname: string | null;
   birth_date: string | null;
   favorite_team: string | null;
   privacy_accepted: boolean;

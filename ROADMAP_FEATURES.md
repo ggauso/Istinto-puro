@@ -16,6 +16,7 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 - [x] **Task 1.1.2:** Creare tabella `matches` per tracciare partite in corso (alter-002-gioco.sql)
 - [x] **Task 1.1.3:** Quando un utente anonymous gioca, assegnare nome "guest-{numero casuale}" (implementato in game-utils.ts)
 - [x] **Task 1.1.4:** Mostrare il nome dell'avversario nella UI di gioco (implementato in GameScreen)
+- [x] **Task 1.1.5:** Aggiungere campo nickname al profilo utente (alter-003-nickname.sql + ProfileScreen + store.ts)
 
 ### Task 1.2: Tracciare partite giocate
 - [x] **Task 1.2.1:** Creare tabella `matches_history` per storico partite (alter-002-gioco.sql)

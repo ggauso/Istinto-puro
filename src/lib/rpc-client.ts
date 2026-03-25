@@ -373,6 +373,108 @@ export async function getLeaderboard(
 }
 
 /**
+ * Ottieni la classifica settimanale
+ */
+export async function getWeeklyLeaderboard(
+  limit: number = 100
+): Promise<{
+  success: boolean
+  entries: Array<{
+    rank: number
+    userId: string
+    displayName: string
+    totalScore: number
+    tier: string
+    matchesPlayed: number
+    matchesWon: number
+    winRate: number
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_weekly_leaderboard', {
+      p_limit: limit
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      entries: data?.map((entry: any) => ({
+        rank: entry.rank,
+        userId: entry.user_id,
+        displayName: entry.display_name,
+        totalScore: entry.total_score,
+        tier: entry.tier,
+        matchesPlayed: entry.matches_played,
+        matchesWon: entry.matches_won,
+        winRate: entry.win_rate
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      entries: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni la classifica mensile
+ */
+export async function getMonthlyLeaderboard(
+  limit: number = 100
+): Promise<{
+  success: boolean
+  entries: Array<{
+    rank: number
+    userId: string
+    displayName: string
+    totalScore: number
+    tier: string
+    matchesPlayed: number
+    matchesWon: number
+    winRate: number
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_monthly_leaderboard', {
+      p_limit: limit
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      success: true,
+      entries: data?.map((entry: any) => ({
+        rank: entry.rank,
+        userId: entry.user_id,
+        displayName: entry.display_name,
+        totalScore: entry.total_score,
+        tier: entry.tier,
+        matchesPlayed: entry.matches_played,
+        matchesWon: entry.matches_won,
+        winRate: entry.win_rate
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      entries: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
  * Salva il risultato di una partita
  */
 export async function saveMatchResult(
@@ -514,6 +616,62 @@ export async function getMatchHistory(limit: number = 20): Promise<{
     return {
       success: false,
       matches: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni informazioni utente per ID (per visualizzare nickname avversario)
+ */
+export async function getUserInfo(userId: string): Promise<{
+  success: boolean
+  user: null | {
+    id: string
+    nickname: string | null
+    firstName: string | null
+    lastName: string | null
+    tier: string | null
+    totalScore: number
+  }
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_user_info', {
+      p_user_id: userId
+    })
+
+    console.log('getUserInfo RPC result:', { data, error, userId, isArray: Array.isArray(data), hasData: !!data });
+
+    if (error) {
+      throw error
+    }
+
+    // Handle empty result - data could be an empty array or empty object
+    if (!data || (Array.isArray(data) && data.length === 0) || (typeof data === 'object' && Object.keys(data).length === 0)) {
+      console.log('getUserInfo - empty data, will use fallback');
+      return { success: false, user: null, error: 'Utente non trovato' }
+    }
+
+    // Get the first row if data is an array
+    const row = Array.isArray(data) ? data[0] : data;
+
+    return {
+      success: true,
+      user: {
+        id: row.id,
+        nickname: row.nickname,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        tier: row.tier,
+        totalScore: row.total_score
+      },
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      user: null,
       error: formatRpcError(error)
     }
   }

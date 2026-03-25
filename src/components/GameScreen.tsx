@@ -24,6 +24,11 @@ export function GameScreen() {
   const [showAbandonModal, setShowAbandonModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Debug: log when match changes
+  useEffect(() => {
+    console.log('DEBUG match changed:', match);
+  }, [match]);
+
   useEffect(() => {
     if (status === 'playing') {
       const interval = setInterval(() => {
