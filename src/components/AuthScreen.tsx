@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { checkEmailLocked, recordLoginAttempt } from '../lib/rpc-client';
+import { checkEmailLocked, recordLoginAttempt, recordAuthAudit } from '../lib/rpc-client';
 import { LogIn, UserPlus, ArrowLeft, Mail, Lock, User, Calendar, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -134,6 +134,18 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         const clientIp = 'client-ip'; // In production, usare l'IP reale del client
         await recordLoginAttempt(email, clientIp, !signInError);
 
+        // Registra audit event
+        if (signInError) {
+          // Login fallito
+          await recordAuthAudit(null, 'login_failed', email, false).catch(() => {});
+        } else {
+          // Login riuscito - userId sarà disponibile nel session
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await recordAuthAudit(user.id, 'login', email, true).catch(() => {});
+          }
+        }
+
         if (signInError) throw signInError;
         onBack();
       }
@@ -144,6 +156,8 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
       } else if (mode === 'login') {
         const clientIp = 'client-ip';
         await recordLoginAttempt(email, clientIp, false).catch(() => {});
+        // Registra login failed anche per altri errori
+        await recordAuthAudit(null, 'login_failed', email, false).catch(() => {});
       }
       setError(err.message || 'Si è verificato un errore durante l\'autenticazione.');
     } finally {

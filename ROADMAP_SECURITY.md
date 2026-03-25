@@ -143,11 +143,13 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [ ] Audit log
 
 ### Task 3.2: Audit Logging
-- [ ] **Task 3.2.1:** Implementare audit log
-  - [ ] LOGIC: tutti gli UPDATE
-  - [ ] LOGOUT events
-  - [ ] Failed auth attempts
-- [ ] **Task 3.2.2:** Storage audit
+- [x] **Task 3.2.1:** Implementare audit log
+  - [x] UPDATE profili (trigger automatico)
+  - [x] Login/logout events
+  - [x] Failed auth attempts
+  - [x] Eventi di gioco (match_won, match_lost)
+  - [ ] **(OPZIONALE) Task 3.2.2:** Creare cron job per cleanup automatico audit log (90 giorni)
+- [ ] **Task 3.2.3:** Storage audit
   - [ ] Database: Supabase logs
   - [ ] Files: access log
   - [ ] RPC calls: timestamp

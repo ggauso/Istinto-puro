@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuthStore } from './authStore';
-import { saveMatchResult, getUserInfo } from './lib/rpc-client';
+import { saveMatchResult, getUserInfo, recordGameAudit } from './lib/rpc-client';
 import { calculateTier, generateGuestName } from './lib/game-utils';
 
 export interface Team {
@@ -637,5 +637,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       isWin,
       selectedDifficulty
     ).catch(err => console.error('Errore salvataggio risultato:', err));
+
+    // Registra evento di audit per il gioco
+    const eventType = isWin ? 'match_won' : 'match_lost';
+    recordGameAudit(user.id, eventType, match.team1_id?.toString(), score, {
+      opponent: opponentName,
+      opponent_tier: opponentTier,
+      game_mode: gameMode,
+      difficulty: selectedDifficulty
+    }).catch(err => console.error('Errore audit game:', err));
   },
 }));
