@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
-import { getCurrentProfile, updateProfile } from './lib/rpc-client';
+import { getCurrentProfile as fetchProfileFromDb, updateProfile as updateProfileDb } from './lib/rpc-client';
 import { User } from '@supabase/supabase-js';
 
 export interface Profile {
@@ -15,6 +15,13 @@ export interface Profile {
   total_score: number;
   matches_played: number;
   matches_won: number;
+  matches_lost?: number;
+  matches_abandoned?: number;
+  current_streak?: number;
+  streak_type?: 'win' | 'loss' | 'none';
+  longest_win_streak?: number;
+  longest_loss_streak?: number;
+  best_score?: number;
 }
 
 interface AuthState {
@@ -28,19 +35,16 @@ interface AuthState {
   initialize: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
-  updateProfileStats: (isWin: boolean, score: number) => Promise<void>;
+  updateProfileStats: (isWin: boolean, score: number, isAbandoned?: boolean) => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  // Esporto getCurrentProfile e updateProfile per essere chiamati dall'esterno
-  getCurrentProfile,
-  updateProfile,
-
+  // Esporto getCurrentProfile per essere chiamato dall'esterno
   getCurrentProfile: async () => {
     try {
-      const profile = await getCurrentProfile();
+      const profile = await fetchProfileFromDb();
       set({ profile });
       return profile;
     } catch (error) {
@@ -49,24 +53,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  updateProfile: async (score: number) => {
-    try {
-      await updateProfile(score);
-      const { profile } = get();
-      set({
-        profile: profile
-          ? {
-              ...profile,
-              total_score: (profile.total_score || 0) + score,
-              matches_played: (profile.matches_played || 0) + 1
-            }
-          : null,
-      });
-    } catch (error) {
-      console.error('Errore nella chiamata a updateProfile:', error);
-      throw error;
-    }
-  },
   user: null,
   profile: null,
   loading: true,
@@ -143,38 +129,58 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  updateProfileStats: async (isWin: boolean, score: number) => {
+  updateProfileStats: async (isWin: boolean, score: number, isAbandoned: boolean = false) => {
     const { user, profile } = get();
     if (!user || !profile) return;
 
     try {
-      const newMatchesPlayed = (profile.matches_played || 0) + 1;
-      const newMatchesWon = (profile.matches_won || 0) + (isWin ? 1 : 0);
-      const newTotalScore = (profile.total_score || 0) + score;
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          matches_played: newMatchesPlayed,
-          matches_won: newMatchesWon,
-          total_score: newTotalScore,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
+      // Usa la funzione RPC per aggiornare tutte le statistiche
+      const { error } = await supabase.rpc('update_profile_stats', {
+        p_user_id: user.id,
+        p_is_win: isWin,
+        p_score: Math.max(score, 0),
+        p_is_abandoned: isAbandoned
+      });
 
       if (error) {
         console.error('Error updating profile stats:', error);
+        // Fallback: aggiornamento manuale dei campi base
+        const newMatchesPlayed = (profile.matches_played || 0) + 1;
+        const newMatchesWon = (profile.matches_won || 0) + (isWin ? 1 : 0);
+        const newMatchesLost = (profile.matches_lost || 0) + (!isWin && !isAbandoned ? 1 : 0);
+        const newMatchesAbandoned = (profile.matches_abandoned || 0) + (isAbandoned ? 1 : 0);
+        const newTotalScore = (profile.total_score || 0) + Math.max(score, 0);
+        const newBestScore = Math.max(profile.best_score || 0, score);
+
+        await supabase
+          .from('profiles')
+          .update({
+            matches_played: newMatchesPlayed,
+            matches_won: newMatchesWon,
+            matches_lost: newMatchesLost,
+            matches_abandoned: newMatchesAbandoned,
+            total_score: newTotalScore,
+            best_score: newBestScore,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        set({
+          profile: {
+            ...profile,
+            matches_played: newMatchesPlayed,
+            matches_won: newMatchesWon,
+            matches_lost: newMatchesLost,
+            matches_abandoned: newMatchesAbandoned,
+            total_score: newTotalScore,
+            best_score: newBestScore
+          }
+        });
         return;
       }
 
-      set({
-        profile: {
-          ...profile,
-          matches_played: newMatchesPlayed,
-          matches_won: newMatchesWon,
-          total_score: newTotalScore
-        }
-      });
+      // Ricarica il profilo per ottenere le statistiche aggiornate
+      await get().fetchProfile(user.id);
     } catch (error) {
       console.error('Error in updateProfileStats:', error);
     }

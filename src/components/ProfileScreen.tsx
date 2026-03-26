@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useAuthStore } from '../authStore';
 import { TierBadge } from './TierBadge';
-import { calculateTier, getTierProgress } from '../lib/game-utils';
-import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff } from 'lucide-react';
+import { calculateTier, getTierProgress, getNextTierScore } from '../lib/game-utils';
+import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend, getFriends, getPendingFriendRequests, getUserStats, getStatsByDifficulty, getStatsByOpponentTier, getMonthlyActivity, getResultDistribution, type UserStats, type StatsByDifficulty, type StatsByOpponentTier, type MonthlyActivity, type ResultDistribution } from '../lib/rpc-client';
+import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff, Search, UserPlus, Check, Trash2, Send, Users, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ProfileScreenProps {
@@ -29,6 +30,37 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const passwordRequestInFlight = useRef(false);
+
+  // Main profile tabs: 'info' | 'stats' | 'friends'
+  const [mainTab, setMainTab] = useState<'info' | 'stats' | 'friends'>('info');
+
+  // Friends system state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [friendsTab, setFriendsTab] = useState<'search' | 'friends' | 'requests'>('search');
+
+  // Stats section
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Advanced stats section (expandable)
+  const [showAdvancedStats, setShowAdvancedStats] = useState(false);
+  const [advancedStats, setAdvancedStats] = useState<{
+    byDifficulty: StatsByDifficulty[];
+    byOpponentTier: StatsByOpponentTier[];
+    monthly: MonthlyActivity[];
+    distribution: ResultDistribution[];
+  }>({
+    byDifficulty: [],
+    byOpponentTier: [],
+    monthly: [],
+    distribution: []
+  });
+  const [loadingAdvancedStats, setLoadingAdvancedStats] = useState(false);
 
   const { changePassword } = useAuthStore();
 
@@ -93,6 +125,124 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     }
   };
 
+  // Load friends and requests
+  useEffect(() => {
+    if (!user) return;
+    loadFriendsData();
+  }, [user]);
+
+  // Load stats
+  useEffect(() => {
+    if (!user) return;
+    loadStats();
+  }, [user]);
+
+  // Load advanced stats when expanded
+  useEffect(() => {
+    if (!user || !showAdvancedStats) return;
+    loadAdvancedStats();
+  }, [user, showAdvancedStats]);
+
+  async function loadAdvancedStats() {
+    setLoadingAdvancedStats(true);
+    try {
+      const [byDifficulty, byOpponentTier, monthly, distribution] = await Promise.all([
+        getStatsByDifficulty(user.id),
+        getStatsByOpponentTier(user.id),
+        getMonthlyActivity(user.id),
+        getResultDistribution(user.id)
+      ]);
+      setAdvancedStats({ byDifficulty, byOpponentTier, monthly, distribution });
+    } catch (err) {
+      console.error('Error loading advanced stats:', err);
+    }
+    setLoadingAdvancedStats(false);
+  }
+
+  async function loadStats() {
+    setLoadingStats(true);
+    try {
+      const userStats = await getUserStats(user.id);
+      if (userStats) {
+        setStats(userStats);
+      } else if (profile) {
+        const played = profile.matches_played || 0;
+        const won = profile.matches_won || 0;
+        setStats({
+          matches_played: played,
+          matches_won: won,
+          matches_lost: profile.matches_lost || 0,
+          matches_abandoned: profile.matches_abandoned || 0,
+          win_rate: played > 0 ? Math.round((won / played) * 100) : 0,
+          average_score: played > 0 ? Math.round((profile.total_score || 0) / played) : 0,
+          current_streak: profile.current_streak || 0,
+          streak_type: profile.streak_type || 'none',
+          longest_win_streak: profile.longest_win_streak || 0,
+          longest_loss_streak: profile.longest_loss_streak || 0,
+          best_score: profile.best_score || 0
+        });
+      }
+    } catch (err) {
+      console.error('Error loading stats:', err);
+    }
+    setLoadingStats(false);
+  }
+
+  async function loadFriendsData() {
+    setLoadingFriends(true);
+    try {
+      const [friendsResult, requestsResult] = await Promise.all([
+        getFriends(),
+        getPendingFriendRequests()
+      ]);
+      if (friendsResult.success) setFriends(friendsResult.friends);
+      if (requestsResult.success) setFriendRequests(requestsResult.requests);
+    } catch (err) {
+      console.error('Error loading friends data:', err);
+    }
+    setLoadingFriends(false);
+  }
+
+  async function handleSearch() {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    const result = await searchUsers(searchQuery);
+    if (result.success) setSearchResults(result.users);
+    setSearching(false);
+  }
+
+  async function handleSendFriendRequest(userId: string) {
+    const result = await sendFriendRequest(userId);
+    if (result.success) {
+      setSearchResults(prev => prev.filter(u => u.id !== userId));
+    } else {
+      alert(result.error || 'Errore nell\'invio della richiesta');
+    }
+  }
+
+  async function handleAcceptRequest(requestId: string) {
+    const result = await acceptFriendRequest(requestId);
+    if (result.success) {
+      setFriendRequests(prev => prev.filter(r => r.id !== requestId));
+      loadFriendsData();
+    }
+  }
+
+  async function handleRejectRequest(requestId: string) {
+    const result = await rejectFriendRequest(requestId);
+    if (result.success) {
+      setFriendRequests(prev => prev.filter(r => r.id !== requestId));
+    }
+  }
+
+  async function handleRemoveFriend(friendId: string) {
+    if (!confirm('Sei sicuro di voler rimuovere questo amico?')) return;
+    const result = await removeFriend(friendId);
+    if (result.success) {
+      setFriends(prev => prev.filter(f => f.id !== friendId));
+    }
+  }
+
   if (!user || !profile) {
     return (
       <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
@@ -112,6 +262,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   // Calcolo tier
   const tier = calculateTier(totalScore);
   const tierProgress = getTierProgress(totalScore);
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
 
   return (
     <div className="min-h-screen bg-[#121212] text-white p-4 md:p-8">
@@ -134,7 +285,42 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
           </button>
         </header>
 
-        <motion.div 
+        {/* Main Navigation Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setMainTab('info')}
+            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+              mainTab === 'info' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            <User className="w-4 h-4 inline mr-2" />
+            Info
+          </button>
+          <button
+            onClick={() => setMainTab('stats')}
+            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+              mainTab === 'stats' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Trophy className="w-4 h-4 inline mr-2" />
+            Statistiche
+          </button>
+          <button
+            onClick={() => setMainTab('friends')}
+            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+              mainTab === 'friends' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4 inline mr-2" />
+            Amici
+          </button>
+        </div>
+
+        {/* INFO TAB - Profilo Utente */}
+        {mainTab === 'info' && (
+          <>
+            {/* Profilo Card */}
+            <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-[#1E1E1E] rounded-3xl p-8 shadow-2xl border border-white/5 mb-8 relative"
@@ -440,6 +626,533 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             </form>
           )}
         </motion.div>
+          </>
+        )}
+
+        {/* STATS TAB */}
+        {mainTab === 'stats' && (
+          <div className="space-y-6">
+            {/* Basic Stats */}
+            <div className="bg-[#1E1E1E] rounded-3xl p-6 shadow-2xl border border-white/5">
+              <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
+                <Trophy className="w-5 h-5 text-yellow-400" />
+                Statistiche
+              </h2>
+
+              {loadingStats ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                </div>
+              ) : stats ? (
+                <div className="space-y-4">
+                  {/* Card Progresso Tier */}
+                  <div className="bg-gradient-to-r from-purple-900/50 to-indigo-900/50 rounded-2xl p-5 border border-purple-500/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+                          tier === 'diamond' ? 'bg-purple-900/50' :
+                          tier === 'platinum' ? 'bg-cyan-900/50' :
+                          tier === 'gold' ? 'bg-yellow-900/50' :
+                          tier === 'silver' ? 'bg-gray-600/50' :
+                          'bg-amber-900/50'
+                        }`}>
+                          {tier === 'diamond' ? '💎' : tier === 'platinum' ? '⭐' : tier === 'gold' ? '🏆' : tier === 'silver' ? '🥈' : '🥉'}
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-white">Tier {tierLabel}</div>
+                          <div className="text-sm text-zinc-400">Punteggio: {totalScore}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-purple-400">{tierProgress}%</div>
+                        <div className="text-xs text-zinc-500">al prossimo livello</div>
+                      </div>
+                    </div>
+                    <div className="w-full bg-zinc-800 rounded-full h-3 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
+                        style={{ width: `${tierProgress}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-zinc-500 mt-2">
+                      <span>{totalScore} pt</span>
+                      <span>{tier === 'diamond' ? 'MAX' : `${getNextTierScore(tier)} pt`}</span>
+                    </div>
+                  </div>
+
+                  {/* Card Partite */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-3xl font-bold text-white">{stats.matches_played}</div>
+                      <div className="text-sm text-zinc-400 mt-1">Partite</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-3xl font-bold text-green-400">{stats.matches_won}</div>
+                      <div className="text-sm text-zinc-400 mt-1">Vinte</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-3xl font-bold text-red-400">{stats.matches_lost}</div>
+                      <div className="text-sm text-zinc-400 mt-1">Perse</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-3xl font-bold text-yellow-400">{stats.win_rate}%</div>
+                      <div className="text-sm text-zinc-400 mt-1">Win Rate</div>
+                    </div>
+                  </div>
+
+                  {/* Card Statistiche Dettagliate */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-white">{Math.round(stats.average_score)}</div>
+                      <div className="text-xs text-zinc-400 mt-1">Media Punti</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-purple-400">{stats.best_score}</div>
+                      <div className="text-xs text-zinc-400 mt-1">Best Score</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
+                      <div className="text-2xl font-bold text-orange-400">{stats.matches_abandoned}</div>
+                      <div className="text-xs text-zinc-400 mt-1">Abbandonate</div>
+                    </div>
+                  </div>
+
+                  {/* Card Streak */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className={`bg-zinc-800/50 rounded-xl p-4 ${stats.streak_type === 'win' ? 'border border-green-500/50' : stats.streak_type === 'loss' ? 'border border-red-500/50' : ''}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        {stats.streak_type === 'win' ? (
+                          <span className="text-green-400 text-sm">🔥 Serie Vittorie</span>
+                        ) : stats.streak_type === 'loss' ? (
+                          <span className="text-red-400 text-sm">❄️ Serie Sconfitte</span>
+                        ) : (
+                          <span className="text-zinc-400 text-sm">Streak</span>
+                        )}
+                      </div>
+                      <div className="text-3xl font-bold text-white">{stats.current_streak}</div>
+                      <div className="text-xs text-zinc-500 mt-1">attuale</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4">
+                      <div className="text-sm text-zinc-400 mb-3">Record Streak</div>
+                      <div className="flex justify-between">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-400">🏆</div>
+                          <div className="text-lg font-bold text-green-400">{stats.longest_win_streak}</div>
+                          <div className="text-xs text-zinc-500">vittorie</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-400">📉</div>
+                          <div className="text-lg font-bold text-red-400">{stats.longest_loss_streak}</div>
+                          <div className="text-xs text-zinc-500">sconfitte</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-zinc-400">
+                  <p>Caricamento statistiche...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Advanced Stats Section (Expandable) */}
+            <div className="bg-[#1E1E1E] rounded-3xl p-6 shadow-2xl border border-white/5">
+              <button
+                onClick={() => setShowAdvancedStats(!showAdvancedStats)}
+                className="w-full flex items-center justify-between mb-4"
+              >
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Target className="w-5 h-5 text-cyan-400" />
+                  Statistiche Avanzate
+                </h2>
+                <motion.div
+                  animate={{ rotate: showAdvancedStats ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </motion.div>
+              </button>
+
+              {showAdvancedStats && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {loadingAdvancedStats ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Win Rate by Difficulty - Card migliorata */}
+                      <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 rounded-2xl p-5 border border-cyan-500/20">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-base font-semibold text-cyan-300">Win Rate per Difficoltà</h3>
+                        </div>
+                        <div className="space-y-4">
+                          {advancedStats.byDifficulty.length > 0 ? advancedStats.byDifficulty.map((item) => {
+                            const difficultyLabel = item.difficulty === 1 ? 'Facile' : item.difficulty === 2 ? 'Medio' : 'Difficile';
+                            const difficultyColors: Record<number, string> = {
+                              1: 'from-green-500 to-emerald-500',
+                              2: 'from-yellow-500 to-orange-500',
+                              3: 'from-red-500 to-rose-500'
+                            };
+                            return (
+                              <div key={item.difficulty} className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-medium text-zinc-300">{difficultyLabel}</span>
+                                  <span className="text-lg font-bold text-white">{item.win_rate}%</span>
+                                </div>
+                                <div className="w-full bg-zinc-800 rounded-full h-4 overflow-hidden">
+                                  <div
+                                    className={`h-full bg-gradient-to-r ${difficultyColors[item.difficulty] || 'from-zinc-500 to-zinc-400'} rounded-full transition-all duration-500`}
+                                    style={{ width: `${item.win_rate}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-xs text-zinc-500">
+                                  <span>{item.matches_won} vittorie</span>
+                                  <span>{item.matches_lost} sconfitte</span>
+                                </div>
+                              </div>
+                            );
+                          }) : (
+                            <div className="text-center py-6 text-zinc-500">
+                              <p>Nessuna partita giocata</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Performance vs Opponent Tier - Card migliorata */}
+                      <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 rounded-2xl p-5 border border-purple-500/20">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                            <Users className="w-4 h-4 text-purple-400" />
+                          </div>
+                          <h3 className="text-base font-semibold text-purple-300">Performance vs Tier Avversario</h3>
+                        </div>
+                        <div className="space-y-4">
+                          {advancedStats.byOpponentTier.length > 0 ? advancedStats.byOpponentTier.map((item) => {
+                            const tierColors: Record<string, string> = {
+                              Bronze: 'from-amber-600 to-yellow-500',
+                              Silver: 'from-gray-400 to-slate-300',
+                              Gold: 'from-yellow-500 to-amber-400',
+                              Platinum: 'from-cyan-500 to-teal-400',
+                              Diamond: 'from-purple-500 to-pink-400',
+                              AI: 'from-red-500 to-orange-400'
+                            };
+                            const tierIcons: Record<string, string> = {
+                              Bronze: '🥉',
+                              Silver: '🥈',
+                              Gold: '🏆',
+                              Platinum: '⭐',
+                              Diamond: '💎',
+                              AI: '🤖'
+                            };
+                            return (
+                              <div key={item.opponent_tier} className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-medium text-zinc-300">
+                                    {tierIcons[item.opponent_tier] || '❓'} {item.opponent_tier}
+                                  </span>
+                                  <span className="text-lg font-bold text-white">{item.win_rate}%</span>
+                                </div>
+                                <div className="w-full bg-zinc-800 rounded-full h-4 overflow-hidden">
+                                  <div
+                                    className={`h-full bg-gradient-to-r ${tierColors[item.opponent_tier] || 'from-zinc-500 to-zinc-400'} rounded-full transition-all duration-500`}
+                                    style={{ width: `${item.win_rate}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-xs text-zinc-500">
+                                  <span>{item.matches_won} vittorie</span>
+                                  <span>{item.matches_lost} sconfitte</span>
+                                </div>
+                              </div>
+                            );
+                          }) : (
+                            <div className="text-center py-6 text-zinc-500">
+                              <p>Nessuna partita PvP</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Monthly Activity - Card migliorata */}
+                      <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-2xl p-5 border border-green-500/20">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-base font-semibold text-green-300">Attività Mensile</h3>
+                        </div>
+                        <div className="flex items-end gap-3 h-40">
+                          {advancedStats.monthly.length > 0 ? advancedStats.monthly.slice(-6).map((item, idx) => {
+                            const maxMatches = Math.max(...advancedStats.monthly.map(m => m.matches_played), 1);
+                            const height = Math.max((item.matches_played / maxMatches) * 100, 10);
+                            return (
+                              <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                                <div className="w-full flex flex-col items-center justify-end h-32">
+                                  <div
+                                    className="w-full bg-gradient-to-t from-green-600 to-green-400 rounded-t-lg hover:from-green-500 hover:to-green-300 transition-all cursor-pointer"
+                                    style={{ height: `${height}%` }}
+                                    title={`${item.matches_played} partite, ${item.matches_won} vittorie`}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium text-zinc-400">{item.month}</span>
+                                <span className="text-xs text-zinc-500">{item.matches_played}</span>
+                              </div>
+                            );
+                          }) : (
+                            <div className="flex-1 text-center py-6 text-zinc-500">
+                              <p>Nessuna attività recente</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Result Distribution - Card migliorata */}
+                      <div className="bg-gradient-to-br from-orange-900/30 to-amber-900/30 rounded-2xl p-5 border border-orange-500/20">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-base font-semibold text-orange-300">Distribuzione Risultati</h3>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                          {advancedStats.distribution.length > 0 ? advancedStats.distribution.map((item) => {
+                            const colors: Record<string, string> = {
+                              'Vittorie': 'from-green-600 to-emerald-500',
+                              'Sconfitte': 'from-red-600 to-rose-500',
+                              'Abbandoni': 'from-yellow-600 to-amber-500'
+                            };
+                            const icons: Record<string, string> = {
+                              'Vittorie': '✅',
+                              'Sconfitte': '❌',
+                              'Abbandoni': '⏸️'
+                            };
+                            const labels: Record<string, string> = {
+                              'Vittorie': 'Vinte',
+                              'Sconfitte': 'Perse',
+                              'Abbandoni': 'Abb.'
+                            };
+                            return (
+                              <div key={item.result_type} className="text-center">
+                                <div className="text-3xl mb-2">{icons[item.result_type] || '❓'}</div>
+                                <div className="text-2xl font-bold text-white">{item.percentage}%</div>
+                                <div className="text-sm text-zinc-400">{labels[item.result_type] || item.result_type}</div>
+                                <div className="w-full bg-zinc-800 rounded-full h-2 mt-3 overflow-hidden">
+                                  <div
+                                    className={`h-full bg-gradient-to-r ${colors[item.result_type] || 'from-zinc-500 to-zinc-400'} rounded-full`}
+                                    style={{ width: `${item.percentage}%` }}
+                                  />
+                                </div>
+                                <div className="text-xs text-zinc-500 mt-1">{item.count} partite</div>
+                              </div>
+                            );
+                          }) : (
+                            <div className="col-span-3 text-center py-6 text-zinc-500">
+                              <p>Nessuna partita giocata</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* FRIENDS TAB */}
+        {mainTab === 'friends' && (
+          <div className="space-y-6">
+            <div className="bg-[#1E1E1E] rounded-3xl p-6 shadow-2xl border border-white/5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Users className="w-5 h-5 text-purple-400" />
+                  Amici
+                </h2>
+                {friendRequests.length > 0 && (
+                  <span className="bg-purple-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                    {friendRequests.length}
+                  </span>
+                )}
+              </div>
+
+              {/* Tabs */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setFriendsTab('search')}
+                  className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${
+                    friendsTab === 'search' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Search className="w-4 h-4 inline mr-1" />
+                  Cerca
+                </button>
+                <button
+                  onClick={() => setFriendsTab('friends')}
+                  className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${
+                    friendsTab === 'friends' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Users className="w-4 h-4 inline mr-1" />
+                  Amici ({friends.length})
+                </button>
+                <button
+                  onClick={() => setFriendsTab('requests')}
+                  className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors relative ${
+                    friendsTab === 'requests' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4 inline mr-1" />
+                  Richieste
+                  {friendRequests.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                      {friendRequests.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Search Tab */}
+              {friendsTab === 'search' && (
+                <div>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                      placeholder="Cerca utenti per nickname..."
+                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      onClick={handleSearch}
+                      disabled={searching}
+                      className="bg-purple-600 px-4 py-2 rounded-xl text-white hover:bg-purple-500 transition-colors disabled:opacity-50"
+                    >
+                      {searching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {searchResults.length > 0 ? searchResults.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between bg-zinc-800/50 p-3 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                            <User className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-white">{u.nickname || u.email?.split('@')[0]}</div>
+                            {u.tier && <span className="text-xs text-zinc-400">Tier: {u.tier}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleSendFriendRequest(u.id)}
+                          className="p-2 bg-purple-600 rounded-lg text-white hover:bg-purple-500"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )) : searchQuery && !searching && (
+                      <p className="text-center text-zinc-500 py-4">Nessun utente trovato</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Friends List Tab */}
+              {friendsTab === 'friends' && (
+                <div>
+                  {loadingFriends ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                    </div>
+                  ) : friends.length > 0 ? (
+                    <div className="space-y-2">
+                      {friends.map((friend) => (
+                        <div key={friend.id} className="flex items-center justify-between bg-zinc-800/50 p-3 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                              <User className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-white">{friend.nickname || friend.email?.split('@')[0]}</div>
+                              {friend.tier && <span className="text-xs text-zinc-400">Tier: {friend.tier}</span>}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveFriend(friend.id)}
+                            className="p-2 text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-zinc-500 py-4">Non hai ancora amici. Cerca utenti per aggiungerne!</p>
+                  )}
+                </div>
+              )}
+
+              {/* Friend Requests Tab */}
+              {friendsTab === 'requests' && (
+                <div>
+                  {friendRequests.length > 0 ? (
+                    <div className="space-y-2">
+                      {friendRequests.map((request) => (
+                        <div key={request.id} className="flex items-center justify-between bg-zinc-800/50 p-3 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                              <User className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-white">{request.nickname || request.email?.split('@')[0]}</div>
+                              <div className="text-xs text-zinc-400">Vuole essere tuo amico</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleAcceptRequest(request.id)}
+                              className="p-2 bg-green-600 rounded-lg text-white hover:bg-green-500"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleRejectRequest(request.id)}
+                              className="p-2 bg-red-600 rounded-lg text-white hover:bg-red-500"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-zinc-500 py-4">Nessuna richiesta di amicizia</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

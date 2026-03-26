@@ -94,6 +94,21 @@ export function getTierProgress(totalScore: number): number {
   return Math.min(100, Math.round((progress / range) * 100));
 }
 
+/**
+ * Calcola i punti necessari per il prossimo tier
+ */
+export function getNextTierScore(currentTier: Tier): number {
+  const tierOrder: Tier[] = ['bronze', 'silver', 'gold', 'platinum', 'diamond'];
+  const currentIndex = tierOrder.indexOf(currentTier);
+
+  if (currentIndex === tierOrder.length - 1) {
+    return TIER_CONFIG.diamond.maxScore; // Already at max
+  }
+
+  const nextTier = tierOrder[currentIndex + 1];
+  return TIER_CONFIG[nextTier].minScore;
+}
+
 // =====================================================
 // LEADERBOARD
 // =====================================================

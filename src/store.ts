@@ -575,10 +575,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           });
         }
         // Penalità di 50 punti per abbandono in PvP
-        useAuthStore.getState().updateProfileStats(false, -50);
+        useAuthStore.getState().updateProfileStats(false, -50, true);
       } else if (gameMode === 'ai') {
         // Nessuna penalità extra per l'IA, solo i punti attuali
-        useAuthStore.getState().updateProfileStats(false, score);
+        useAuthStore.getState().updateProfileStats(false, score, true);
       }
     }
     

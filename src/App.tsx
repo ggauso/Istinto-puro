@@ -12,15 +12,27 @@ import { GameScreen } from './components/GameScreen';
 import { AuthScreen } from './components/AuthScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
+import { ChallengeScreen } from './components/ChallengeScreen';
 
 export default function App() {
   const { status } = useGameStore();
   const { initialize, loading } = useAuthStore();
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge'>('home');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
+
+    // Check if URL is a challenge link (istintopuro.com/sfida/TOKEN)
+    const path = window.location.pathname;
+    if (path.startsWith('/sfida/')) {
+      const token = path.replace('/sfida/', '');
+      if (token && token.length >= 8) {
+        setChallengeToken(token);
+        setCurrentScreen('challenge');
+      }
+    }
 
     // Intercetta il callback del link di recupero password inviato da Supabase.
     // Quando l'utente clicca il link, Supabase emette PASSWORD_RECOVERY prima di autenticarlo.
@@ -52,10 +64,28 @@ export default function App() {
     );
   }
 
+  // Handle challenge acceptance - start the game
+  const handleAcceptChallenge = (roomId: string) => {
+    setCurrentScreen('home');
+    // The game will start via the game store
+    window.location.href = '/';
+  };
+
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-[#FFD700] selection:text-black">
-      {currentScreen === 'auth' && <AuthScreen 
-        onBack={() => setCurrentScreen('home')} 
+      {currentScreen === 'challenge' && challengeToken && (
+        <ChallengeScreen
+          token={challengeToken}
+          onBack={() => {
+            setChallengeToken(null);
+            setCurrentScreen('home');
+            window.history.replaceState({}, '', '/');
+          }}
+          onAcceptChallenge={handleAcceptChallenge}
+        />
+      )}
+      {currentScreen === 'auth' && <AuthScreen
+        onBack={() => setCurrentScreen('home')}
         isPasswordRecovery={isPasswordRecovery}
         onPasswordRecoveryDone={() => {
           setIsPasswordRecovery(false);

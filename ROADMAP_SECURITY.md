@@ -155,47 +155,17 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [ ] RPC calls: timestamp
 
 ### Task 3.3: Data Retention
-- [ ] **Task 3.3.1:** Politiche retention
-  - [ ] Match data: 2 anni
-  - [ ] Logs: 90 giorni
-  - [ ] Failed attempts: 30 giorni
+- [x] **Task 3.3.1:** Politiche retention
+  - [x] Match data: 2 anni (730 giorni)
+  - [x] Logs: 90 giorni (audit_log)
+  - [x] Failed attempts: 30 giorni (login_attempts)
+  - [x] Funzione master `run_retention_cleanup()`
+  - [x] View `get_retention_stats()` per monitoraggio
 - [ ] **Task 3.3.2:** Data export (GDPR)
   - [ ] Export completo profilo
   - [ ] Download storico match
   - [ ] Delete account (irreversibile)
-
----
-
-## 🟢 MILESTONE 4: Monitoring & Incident Response
-
-**Tempo stimato:** 1 giorno
-**Priorità:** MEDIA
-
-### Task 4.1: Security Monitoring
-- [ ] **Task 4.1.1:** Implementare monitoring
-  - [ ] Failed auth attempts
-  - [ ] RPC errors rate
-  - [ ] Abnormal traffic patterns
-- [ ] **Task 4.1.2:** Alerting
-  - [ ] Email su breach
-  - [ ] Slack su anomalie
-  - [ ] PagerDuty per critico
-
-### Task 4.2: Vulnerability Scanning
-- [ ] **Task 4.2.1:** SAST (Static Analysis)
-  - [ ] Snyk/CodeQL
-  - [ ] Weekly scans
-  - [ ] Block critical/high
-- [ ] **Task 4.2.2:** DAST (Dynamic Analysis)
-  - [ ] OWASP ZAP
-  - [ ] Monthly scans
-  - [ ] Fix within SLA
-
-### Task 4.3: Penetration Testing
-- [ ] **Task 4.3.1:** Engage pentester esterno
-  - [ ] Test annuale completo
-  - [ ] Bug bounty program
-  - [ ] Riporto findings
+- [ ] **(OPZIONALE) Task 3.3.3:** Cron job automatico per retention cleanup (eseguire `run_retention_cleanup()` quotidianamente)
 
 ---
 
@@ -240,6 +210,39 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
 
 ---
 
+## 🟢 MILESTONE 4: Monitoring & Incident Response (DOPO MILESTONE 5)
+
+**Tempo stimato:** 1 giorno
+**Priorità:** BASSA (funzionalità admin)
+
+### Task 4.1: Security Monitoring
+- [ ] **Task 4.1.1:** Implementare monitoring
+  - [ ] Failed auth attempts
+  - [ ] RPC errors rate
+  - [ ] Abnormal traffic patterns
+- [ ] **Task 4.1.2:** Alerting
+  - [ ] Email su breach
+  - [ ] Slack su anomalie
+  - [ ] PagerDuty per critico
+
+### Task 4.2: Vulnerability Scanning
+- [ ] **Task 4.2.1:** SAST (Static Analysis)
+  - [ ] Snyk/CodeQL
+  - [ ] Weekly scans
+  - [ ] Block critical/high
+- [ ] **Task 4.2.2:** DAST (Dynamic Analysis)
+  - [ ] OWASP ZAP
+  - [ ] Monthly scans
+  - [ ] Fix within SLA
+
+### Task 4.3: Penetration Testing
+- [ ] **Task 4.3.1:** Engage pentester esterno
+  - [ ] Test annuale completo
+  - [ ] Bug bounty program
+  - [ ] Riporto findings
+
+---
+
 ## 📊 Timeline Riepilogativa
 
 | Milestone | Task | Tempo | Stato |
@@ -277,15 +280,15 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
 - [ ] Implementa session refresh
 - [ ] Configura audit log
 
-### Fase 3 (Giorno 5-6): Monitoring
-- [ ] Completa Milestone 4
-- [ ] Setup alerting
-- [ ] Prima scansione sicurezza
-
-### Fase 4 (Giorno 7): Compliance
+### Fase 3 (Giorno 5-6): Compliance
 - [ ] Completa Milestone 5
 - [ ] Privacy policy
 - [ ] User docs
+
+### Fase 4 (Giorno 7+): Monitoring (Admin)
+- [ ] Completa Milestone 4
+- [ ] Setup alerting
+- [ ] Prima scansione sicurezza
 
 ---
 

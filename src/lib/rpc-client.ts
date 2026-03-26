@@ -816,6 +816,616 @@ export async function recordGameAudit(
   )
 }
 
+// =====================================================
+// DATA RETENTION (Admin)
+// =====================================================
+
+/**
+ * Ottieni statistiche retention (quanti record saranno cancellati)
+ */
+export async function getRetentionStats(): Promise<{
+  success: boolean
+  stats: Array<{
+    table_name: string
+    current_records: number
+    records_to_delete: number
+    retention_days: number
+    oldest_record: string
+    newest_record: string
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_retention_stats')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      stats: data || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      stats: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Esegui cleanup manuale (solo per admin)
+ */
+export async function runRetentionCleanup(): Promise<{
+  success: boolean
+  results: Array<{ cleanup_name: string; rows_deleted: number }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('run_retention_cleanup')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      results: data || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      results: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+// =====================================================
+// SFIDE EXPRESS (Challenge Links)
+// =====================================================
+
+/**
+ * Crea una nuova sfida e restituisce il link
+ */
+export async function createChallenge(): Promise<{
+  success: boolean
+  challengeId: string | null
+  token: string | null
+  challengeUrl: string | null
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('create_challenge')
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      return {
+        success: true,
+        challengeId: data[0].challenge_id,
+        token: data[0].token,
+        challengeUrl: data[0].challenge_url,
+        error: null
+      }
+    }
+
+    return {
+      success: false,
+      challengeId: null,
+      token: null,
+      challengeUrl: null,
+      error: 'Errore nella creazione della sfida'
+    }
+  } catch (error) {
+    return {
+      success: false,
+      challengeId: null,
+      token: null,
+      challengeUrl: null,
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Accetta una sfida tramite token
+ */
+export async function acceptChallenge(token: string): Promise<{
+  success: boolean
+  challengeId: string | null
+  message: string
+  roomId: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('accept_challenge', { p_token: token })
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      return {
+        success: data[0].success,
+        challengeId: data[0].challenge_id,
+        message: data[0].message,
+        roomId: data[0].room_id
+      }
+    }
+
+    return {
+      success: false,
+      challengeId: null,
+      message: 'Errore sconosciuto',
+      roomId: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      challengeId: null,
+      message: formatRpcError(error),
+      roomId: null
+    }
+  }
+}
+
+/**
+ * Rifiuta una sfida
+ */
+export async function declineChallenge(token: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('decline_challenge', { p_token: token })
+
+    if (error) throw error
+
+    return data || false
+  } catch (error) {
+    console.error('Decline challenge error:', error)
+    return false
+  }
+}
+
+/**
+ * Ottieni i dettagli pubblici di una sfida (senza login)
+ */
+export async function getChallengeByToken(token: string): Promise<{
+  id: string | null
+  creatorName: string | null
+  status: string | null
+  createdAt: string | null
+  expiresAt: string | null
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_challenge_by_token', { p_token: token })
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      return {
+        id: data[0].id,
+        creatorName: data[0].creator_name,
+        status: data[0].status,
+        createdAt: data[0].created_at,
+        expiresAt: data[0].expires_at,
+        error: null
+      }
+    }
+
+    return {
+      id: null,
+      creatorName: null,
+      status: null,
+      createdAt: null,
+      expiresAt: null,
+      error: 'Sfida non trovata'
+    }
+  } catch (error) {
+    return {
+      id: null,
+      creatorName: null,
+      status: null,
+      createdAt: null,
+      expiresAt: null,
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni le sfide dell'utente (create e ricevute)
+ */
+export async function getMyChallenges(): Promise<{
+  success: boolean
+  challenges: Array<{
+    id: string
+    creatorName: string
+    status: string
+    createdAt: string
+    opponentName: string | null
+    isCreator: boolean
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_challenges')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      challenges: data || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      challenges: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+// =====================================================
+// SISTEMA AMICIZIE
+// =====================================================
+
+/**
+ * Cerca utenti per nickname
+ */
+export async function searchUsers(nickname: string): Promise<{
+  success: boolean
+  users: Array<{
+    id: string
+    nickname: string | null
+    firstName: string | null
+    tier: string
+    totalScore: number
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('search_users', { p_nickname: nickname })
+
+    if (error) throw error
+
+    return {
+      success: true,
+      users: data?.map((u: any) => ({
+        id: u.id,
+        nickname: u.nickname,
+        firstName: u.first_name,
+        tier: u.tier,
+        totalScore: u.total_score
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      users: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Invia richiesta di amicizia
+ */
+export async function sendFriendRequest(toUserId: string): Promise<{
+  success: boolean
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('send_friend_request', { p_to_user_id: toUserId })
+
+    if (error) throw error
+
+    return { success: data || false, error: null }
+  } catch (error) {
+    return { success: false, error: formatRpcError(error) }
+  }
+}
+
+/**
+ * Accetta richiesta di amicizia
+ */
+export async function acceptFriendRequest(requestId: string): Promise<{
+  success: boolean
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('accept_friend_request', { p_request_id: requestId })
+
+    if (error) throw error
+
+    return { success: data || false, error: null }
+  } catch (error) {
+    return { success: false, error: formatRpcError(error) }
+  }
+}
+
+/**
+ * Rifiuta richiesta di amicizia
+ */
+export async function rejectFriendRequest(requestId: string): Promise<{
+  success: boolean
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('reject_friend_request', { p_request_id: requestId })
+
+    if (error) throw error
+
+    return { success: data || false, error: null }
+  } catch (error) {
+    return { success: false, error: formatRpcError(error) }
+  }
+}
+
+/**
+ * Rimuovi amico
+ */
+export async function removeFriend(friendId: string): Promise<{
+  success: boolean
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('remove_friend', { p_friend_id: friendId })
+
+    if (error) throw error
+
+    return { success: data || false, error: null }
+  } catch (error) {
+    return { success: false, error: formatRpcError(error) }
+  }
+}
+
+/**
+ * Ottieni lista amici
+ */
+export async function getFriends(): Promise<{
+  success: boolean
+  friends: Array<{
+    id: string
+    friendId: string
+    nickname: string | null
+    firstName: string | null
+    tier: string
+    totalScore: number
+    isOnline: boolean
+    lastLogin: string | null
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_friends')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      friends: data?.map((f: any) => ({
+        id: f.id,
+        friendId: f.friend_id,
+        nickname: f.nickname,
+        firstName: f.first_name,
+        tier: f.tier,
+        totalScore: f.total_score,
+        isOnline: f.is_online,
+        lastLogin: f.last_login
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      friends: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Ottieni richieste di amicizia ricevute (pending)
+ */
+export async function getPendingFriendRequests(): Promise<{
+  success: boolean
+  requests: Array<{
+    id: string
+    fromUserId: string
+    nickname: string | null
+    firstName: string | null
+    tier: string
+    createdAt: string
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_pending_friend_requests')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      requests: data?.map((r: any) => ({
+        id: r.id,
+        fromUserId: r.from_user_id,
+        nickname: r.nickname,
+        firstName: r.first_name,
+        tier: r.tier,
+        createdAt: r.created_at
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      requests: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Verifica se due utenti sono amici
+ */
+export async function areFriends(otherUserId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('are_friends', { p_other_user_id: otherUserId })
+
+    if (error) throw error
+
+    return data || false
+  } catch (error) {
+    return false
+  }
+}
+
+// =====================================================
+// STATISTICHE AVANZATE
+// =====================================================
+
+export interface UserStats {
+  matches_played: number
+  matches_won: number
+  matches_lost: number
+  matches_abandoned: number
+  win_rate: number
+  average_score: number
+  current_streak: number
+  streak_type: 'win' | 'loss' | 'none'
+  longest_win_streak: number
+  longest_loss_streak: number
+  best_score: number
+}
+
+/**
+ * Ottieni statistiche avanzate per un utente
+ */
+export async function getUserStats(userId: string): Promise<UserStats | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_user_stats', { p_user_id: userId })
+
+    if (error) throw error
+
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      return null
+    }
+
+    const row = Array.isArray(data) ? data[0] : data
+
+    return {
+      matches_played: row.matches_played || 0,
+      matches_won: row.matches_won || 0,
+      matches_lost: row.matches_lost || 0,
+      matches_abandoned: row.matches_abandoned || 0,
+      win_rate: row.win_rate || 0,
+      average_score: row.average_score || 0,
+      current_streak: row.current_streak || 0,
+      streak_type: row.streak_type || 'none',
+      longest_win_streak: row.longest_win_streak || 0,
+      longest_loss_streak: row.longest_loss_streak || 0,
+      best_score: row.best_score || 0
+    }
+  } catch (error) {
+    console.error('Error getting user stats:', error)
+    return null
+  }
+}
+
+// =====================================================
+// Statistiche Avanzate con Grafici (Milestone 12)
+// =====================================================
+
+export interface StatsByDifficulty {
+  difficulty: number
+  matches_played: number
+  matches_won: number
+  matches_lost: number
+  win_rate: number
+}
+
+export interface StatsByOpponentTier {
+  opponent_tier: string
+  matches_played: number
+  matches_won: number
+  matches_lost: number
+  win_rate: number
+}
+
+export interface MonthlyActivity {
+  month: string
+  year: number
+  matches_played: number
+  matches_won: number
+  total_score: number
+}
+
+export interface ResultDistribution {
+  result_type: string
+  count: number
+  percentage: number
+}
+
+/**
+ * Statistiche per difficoltà
+ */
+export async function getStatsByDifficulty(userId: string): Promise<StatsByDifficulty[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_stats_by_difficulty', { p_user_id: userId })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error getting stats by difficulty:', error)
+    return []
+  }
+}
+
+/**
+ * Statistiche per tier avversario
+ */
+export async function getStatsByOpponentTier(userId: string): Promise<StatsByOpponentTier[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_stats_by_opponent_tier', { p_user_id: userId })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error getting stats by opponent tier:', error)
+    return []
+  }
+}
+
+/**
+ * Attività mensile (ultimi 6 mesi)
+ */
+export async function getMonthlyActivity(userId: string): Promise<MonthlyActivity[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_monthly_activity', { p_user_id: userId })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error getting monthly activity:', error)
+    return []
+  }
+}
+
+/**
+ * Distribuzione risultati
+ */
+export async function getResultDistribution(userId: string): Promise<ResultDistribution[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_result_distribution_v2', { p_user_id: userId })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error getting result distribution:', error)
+    return []
+  }
+}
+
 export {
   // Re-export utility functions for convenience
   isValidTeamId,
