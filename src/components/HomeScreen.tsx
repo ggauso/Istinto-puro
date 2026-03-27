@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../store';
 import { useAuthStore } from '../authStore';
-import { createChallenge } from '../lib/rpc-client';
+import { createChallenge, getMyActiveChallenge } from '../lib/rpc-client';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Play, Loader2, Globe, Users, Bot, User, Link, Copy, Check, X, Send } from 'lucide-react';
+import { Trophy, Play, Loader2, Globe, Users, Bot, User, Send, X, ExternalLink } from 'lucide-react';
 
 const LEAGUES = [
   { id: null, name: 'Tutti i Campionati' },
@@ -27,15 +27,61 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateToLeaderboard }: HomeScreenProps) {
-  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame, errorMsg, setErrorMsg } = useGameStore();
+  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, errorMsg, setErrorMsg } = useGameStore();
   const { user, profile } = useAuthStore();
 
-  // Challenge modal state
-  const [showChallengeModal, setShowChallengeModal] = useState(false);
-  const [challengeLink, setChallengeLink] = useState<string | null>(null);
-  const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [creatingChallenge, setCreatingChallenge] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [pendingChallengeToken, setPendingChallengeToken] = useState<string | null>(null);
+  const pollingRef = useRef<number | null>(null);
+
+  // Polling per il creatore della sfida - check if someone accepted
+  useEffect(() => {
+    if (!user || !pendingChallengeToken) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    // Poll every 5 seconds to check if THIS specific challenge was accepted
+    pollingRef.current = window.setInterval(async () => {
+      // Don't poll if we don't have a valid pending token
+      if (!pendingChallengeToken) return;
+
+      const result = await getMyActiveChallenge();
+
+      // Check if THIS specific challenge (matching our token) was accepted
+      // Only redirect if the challenge is recent (within last 5 minutes)
+      if (
+        result.success &&
+        result.challenge &&
+        result.challenge.status === 'accepted' &&
+        result.challenge.roomId
+      ) {
+        // Stop polling and redirect
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+
+        // Clear the pending token so polling stops
+        setPendingChallengeToken(null);
+
+        // Navigate to the challenge page where the game will start
+        window.location.href = `/sfida/${pendingChallengeToken}`;
+      }
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [user, pendingChallengeToken]);
 
   const handleCreateChallenge = async () => {
     if (!user) {
@@ -46,9 +92,9 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
     setCreatingChallenge(true);
     const result = await createChallenge();
 
-    if (result.success && result.challengeUrl) {
-      setChallengeLink(result.challengeUrl);
+    if (result.success && result.token) {
       setChallengeToken(result.token);
+      setPendingChallengeToken(result.token); // Start polling for this challenge
       setShowChallengeModal(true);
     } else {
       setErrorMsg(result.error || 'Errore nella creazione della sfida');
@@ -56,12 +102,15 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
     setCreatingChallenge(false);
   };
 
-  const handleCopyLink = async () => {
-    if (challengeLink) {
-      await navigator.clipboard.writeText(challengeLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleGoToChallenge = () => {
+    if (challengeToken) {
+      window.location.href = `/sfida/${challengeToken}`;
     }
+  };
+
+  const handleCloseChallengeModal = () => {
+    setShowChallengeModal(false);
+    // Keep pendingChallengeToken to keep polling active
   };
 
   return (
@@ -78,7 +127,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
           </button>
         )}
         {user ? (
-          <button 
+          <button
             onClick={onNavigateToProfile}
             className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
           >
@@ -94,7 +143,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
             </span>
           </button>
         ) : (
-          <button 
+          <button
             onClick={onNavigateToAuth}
             className="flex items-center gap-2 bg-[#FFD700] text-black hover:bg-yellow-400 px-4 py-2 rounded-full font-bold transition-colors"
           >
@@ -113,11 +162,11 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
         <div className="w-32 h-32 bg-zinc-900 rounded-full flex items-center justify-center border-4 border-[#FFD700] shadow-[0_0_30px_rgba(255,215,0,0.3)]">
           <Trophy size={64} className="text-[#FFD700]" />
         </div>
-        
+
         <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-yellow-500 uppercase text-center">
           Istinto Puro
         </h1>
-        
+
         <p className="text-zinc-400 text-center max-w-sm text-lg leading-relaxed">
           Il trivia calcistico 1vs1. Trova il giocatore in comune tra le due squadre prima che scada il tempo.
         </p>
@@ -125,7 +174,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
         {errorMsg && (
           <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-xl max-w-sm text-center text-sm font-medium">
             {errorMsg}
-            <button 
+            <button
               onClick={() => setErrorMsg(null)}
               className="ml-2 underline text-red-400 hover:text-red-300"
             >
@@ -138,12 +187,6 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
           <div className="mt-8 flex flex-col items-center space-y-4">
             <Loader2 className="animate-spin text-[#FFD700]" size={48} />
             <p className="text-[#FFD700] font-bold animate-pulse text-xl">Ricerca avversario...</p>
-            <button
-              onClick={resetGame}
-              className="mt-4 px-6 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-full font-bold transition-colors border border-red-500/30"
-            >
-              Annulla Ricerca
-            </button>
           </div>
         ) : (
           <div className="mt-8 flex flex-col items-center space-y-6 w-full max-w-xs">
@@ -237,32 +280,28 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
 
       {/* Challenge Modal */}
       <AnimatePresence>
-        {showChallengeModal && (
+        {showChallengeModal && challengeToken && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => setShowChallengeModal(false)}
+            onClick={handleCloseChallengeModal}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-900 border border-purple-500/30 rounded-2xl p-6 max-w-md w-full"
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#1E1E1E] border border-purple-500/30 rounded-3xl p-6 max-w-md w-full shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Send className="w-6 h-6 text-purple-400" />
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Send className="text-purple-400 w-5 h-5" />
                   Sfida Creata!
                 </h2>
                 <button
-                  onClick={() => {
-                    setShowChallengeModal(false);
-                    setChallengeLink(null);
-                    setChallengeToken(null);
-                  }}
+                  onClick={handleCloseChallengeModal}
                   className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <X className="w-5 h-5 text-zinc-400" />
@@ -270,38 +309,27 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
               </div>
 
               <p className="text-zinc-400 mb-4">
-                Condividi questo link con il tuo amico per iniziare una sfida!
+                Condividi questo link con un amico per sfidarlo:
               </p>
 
-              <div className="bg-zinc-900 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-2 text-sm text-zinc-500 mb-2">
-                  <Link className="w-4 h-4" />
-                  Link della sfida
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={challengeLink || ''}
-                    readOnly
-                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
-                  />
-                  <button
-                    onClick={handleCopyLink}
-                    className={`px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2 ${
-                      copied
-                        ? 'bg-green-600 text-white'
-                        : 'bg-purple-600 hover:bg-purple-500 text-white'
-                    }`}
-                  >
-                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    {copied ? 'Copiato!' : 'Copia'}
-                  </button>
-                </div>
+              <div className="flex gap-2 mb-6">
+                <input
+                  type="text"
+                  value={`https://istintopuro.com/sfida/${challengeToken}`}
+                  readOnly
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(`https://istintopuro.com/sfida/${challengeToken}`)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold transition-colors"
+                >
+                  Copia
+                </button>
               </div>
 
-              <div className="text-center text-zinc-500 text-sm">
-                La sfida scade tra 24 ore
-              </div>
+              <p className="text-purple-300 text-sm text-center mt-4">
+                Attendi che un avversario accetti. Verrai reindirizzato automaticamente.
+              </p>
             </motion.div>
           </motion.div>
         )}
@@ -309,3 +337,5 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
     </div>
   );
 }
+
+export default HomeScreen;

@@ -20,6 +20,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge'>('home');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [currentChallengeId, setCurrentChallengeId] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
@@ -65,10 +66,61 @@ export default function App() {
   }
 
   // Handle challenge acceptance - start the game
-  const handleAcceptChallenge = (roomId: string) => {
-    setCurrentScreen('home');
-    // The game will start via the game store
-    window.location.href = '/';
+  // This is called when:
+  // 1. Someone accepts a challenge link (they are the challenger) - isHost=false
+  // 2. A challenge creator detects someone accepted their challenge - isHost=true
+  const handleAcceptChallenge = (
+    roomId: string,
+    opponentUserId: string,
+    opponentNickname: string,
+    opponentTier: string,
+    isHost: boolean = false,
+    challengeId?: string
+  ) => {
+    // Get game store functions
+    const gameStore = useGameStore.getState();
+
+    // Set game mode to PvP
+    gameStore.setGameMode('pvp');
+
+    // Join the game room
+    // We need to first set status to 'searching' so joinGameRoom works
+    useGameStore.setState({ status: 'searching' });
+
+    if (isHost) {
+      // Host (challenge creator) joins immediately - they'll wait for challenger
+      gameStore.joinGameRoom(roomId, isHost, opponentUserId, opponentNickname);
+
+      // Set opponent info and challenge ID manually since we know it
+      useGameStore.setState({
+        opponentInfo: {
+          nickname: opponentNickname,
+          tier: opponentTier
+        },
+        currentChallengeId: challengeId || null
+      });
+
+      // Navigate to game screen
+      setCurrentScreen('game');
+    } else {
+      // Challenger (challenge acceptor) waits a bit before joining
+      // This gives the host time to detect acceptance and join the room first
+      setTimeout(() => {
+        gameStore.joinGameRoom(roomId, isHost, opponentUserId, opponentNickname);
+
+        // Set opponent info manually since we know it
+        useGameStore.setState({
+          opponentInfo: {
+            nickname: opponentNickname,
+            tier: opponentTier
+          },
+          currentChallengeId: challengeId || null
+        });
+
+        // Navigate to game screen
+        setCurrentScreen('game');
+      }, 2000);
+    }
   };
 
   return (
@@ -77,9 +129,7 @@ export default function App() {
         <ChallengeScreen
           token={challengeToken}
           onBack={() => {
-            setChallengeToken(null);
-            setCurrentScreen('home');
-            window.history.replaceState({}, '', '/');
+            window.location.replace('/');
           }}
           onAcceptChallenge={handleAcceptChallenge}
         />

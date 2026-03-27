@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.challenges (
   token TEXT UNIQUE NOT NULL DEFAULT substr(md5(gen_random_uuid()::text), 1, 12),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'completed', 'expired')),
   opponent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  room_id TEXT, -- room ID per la partita quando accettata
   match_id UUID, -- riferimento al match se completato
   created_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '24 hours',
@@ -114,7 +115,10 @@ RETURNS TABLE (
   success BOOLEAN,
   challenge_id UUID,
   message TEXT,
-  room_id TEXT
+  room_id TEXT,
+  creator_id UUID,
+  creator_nickname TEXT,
+  creator_tier TEXT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -123,6 +127,7 @@ DECLARE
   v_challenge RECORD;
   v_user_id UUID;
   v_room_id TEXT;
+  v_creator RECORD;
 BEGIN
   -- Get current user
   v_user_id := auth.uid();
@@ -133,28 +138,42 @@ BEGIN
   WHERE token = p_token AND status = 'pending' AND expires_at > NOW();
 
   IF v_challenge IS NULL THEN
-    RETURN QUERY VALUES (FALSE, NULL, 'Sfida non valida o scaduta', NULL);
+    RETURN QUERY VALUES (FALSE, NULL, 'Sfida non valida o scaduta', NULL, NULL, NULL, NULL);
     RETURN;
   END IF;
 
   -- Can't challenge yourself
   IF v_challenge.creator_id = v_user_id THEN
-    RETURN QUERY VALUES (FALSE, NULL, 'Non puoi accettare la tua stessa sfida', NULL);
+    RETURN QUERY VALUES (FALSE, NULL, 'Non puoi accettare la tua stessa sfida', NULL, NULL, NULL, NULL);
     RETURN;
   END IF;
 
+  -- Get creator info
+  SELECT nickname, tier INTO v_creator
+  FROM public.profiles
+  WHERE id = v_challenge.creator_id;
+
   -- Generate room ID for the match
-  v_room_id := 'game_' || substr(md5(gen_random_uuid()::text), 1, 8);
+  v_room_id := 'challenge_' || substr(md5(gen_random_uuid()::text), 1, 8);
 
   -- Update challenge status
   UPDATE public.challenges
   SET
     status = 'accepted',
     opponent_id = v_user_id,
+    room_id = v_room_id,
     updated_at = NOW()
   WHERE id = v_challenge.id;
 
-  RETURN QUERY VALUES (TRUE, v_challenge.id, 'Sfida accettata!', v_room_id);
+  RETURN QUERY VALUES (
+    TRUE,
+    v_challenge.id,
+    'Sfida accettata!',
+    v_room_id,
+    v_challenge.creator_id,
+    COALESCE(v_creator.nickname, 'Sfidante'),
+    COALESCE(v_creator.tier, 'bronze')
+  );
 END;
 $$;
 
@@ -272,6 +291,45 @@ BEGIN
   RETURN TRUE;
 END;
 $$;
+
+-- Funzione per ottenere la sfida attiva dell'utente (per il creatore)
+CREATE FUNCTION public.get_my_active_challenge()
+RETURNS TABLE (
+  id UUID,
+  room_id TEXT,
+  status TEXT,
+  opponent_name TEXT,
+  opponent_tier TEXT,
+  opponent_id UUID
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  v_user_id := auth.uid();
+
+  RETURN QUERY
+  SELECT
+    c.id,
+    c.room_id,
+    c.status,
+    COALESCE(p.nickname, p.first_name, 'Sfidante') AS opponent_name,
+    COALESCE(p.tier, 'bronze') AS opponent_tier,
+    c.opponent_id
+  FROM public.challenges c
+  LEFT JOIN public.profiles p ON c.opponent_id = p.id
+  WHERE c.creator_id = v_user_id
+    AND c.status = 'accepted'
+    AND c.room_id IS NOT NULL
+  ORDER BY c.created_at DESC
+  LIMIT 1;
+END;
+$$;
+
+-- Grant execute to authenticated users
+GRANT EXECUTE ON FUNCTION public.get_my_active_challenge TO authenticated;
 
 -- Funzione per pulire sfide scadute (da eseguire periodicamente)
 CREATE FUNCTION public.cleanup_expired_challenges()

@@ -110,12 +110,12 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 ## 🤝 MILESTONE 6: Sfide Express (Link)
 
-**Tempo stimato:** 1-2 ore
+**Tempo stimato:** 2-3 ore
 **Priorità:** ALTA
 
 ### Task 6.1: Creazione Link Sfida
 - [x] **Task 6.1.1:** Generare link univoco per sfida (es. `istintopuro.com/sfida/abc123`)
-- [x] **Task 6.1.2:** Salvare sfida nel DB con stato (pending, accepted, completed)
+- [x] **Task 6.1.2:** Salvare sfida nel DB con stato (pending, accepted, completed, expired)
 - [x] **Task 6.1.3:** UI per creare nuova sfida (bottone nella home)
 - [x] **Task 6.1.4:** Bottone per copiare link negli appunti
 - [ ] **Task 6.1.5:** Mostra QR code per condividere su mobile
@@ -124,12 +124,24 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 - [x] **Task 6.2.1:** Pagina pubblica per visualizzare dettagli sfida (senza login)
 - [x] **Task 6.2.2:** Se utente non loggato: prompt registrazione/login
 - [x] **Task 6.2.3:** Se utente loggato: bottone "Accetta sfida"
-- [ ] **Task 6.2.4:** Notifica al creatore quando sfida accettata (❌ INCOMPLETO - accettazione non avvia la partita)
+- [x] **Task 6.2.4:** Notifica al creatore quando sfida accettata (polling dalla HomeScreen)
 
-### Task 6.3: Partita Privata
-- [ ] **Task 6.3.1:** Avvio partita privata con sfidante specifico (❌ INCOMPLETO)
-- [ ] **Task 6.3.2:** Risultato NON appare in leaderboard globale (solo nel profilo) (❌ INCOMPLETO)
-- [ ] **Task 6.3.3:** Storico sfide nel profilo (❌ INCOMPLETO)
+### Task 6.3: Flusso Completo Sfida
+- [x] **Task 6.3.1:** Utente A crea sfida → rimane sulla Home con polling attivo
+- [x] **Task 6.3.2:** Utente B accetta → polling rileva e reindirizza A a /sfida/TOKEN
+- [x] **Task 6.3.3:** Entrambi gli utenti possono iniziare la partita
+- [x] **Task 6.3.4:** Al termine partita → stato "completed" e redirect a /
+- [x] **Task 6.3.5:** Se sfida non accettata entro tempo limite → stato "expired"
+- [x] **Task 6.3.6:** Se utente abbandona → redirect a /
+
+### Task 6.4: Protezione Ri-accesso
+- [x] **Task 6.4.1:** Se sfida già completata/expired → mostra "Sfida non disponibile"
+- [x] **Task 6.4.2:** get_challenge_by_token filtra solo status 'pending' o 'accepted'
+- [ ] **Task 6.4.3:** Cleanup automatico sfide expired (cron job)
+
+### Task 6.5: Partita Privata
+- [ ] **Task 6.5.1:** Risultato NON appare in leaderboard globale (solo nel profilo)
+- [ ] **Task 6.5.2:** Storico sfide nel profilo
 
 ---
 

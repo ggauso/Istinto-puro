@@ -936,6 +936,9 @@ export async function acceptChallenge(token: string): Promise<{
   challengeId: string | null
   message: string
   roomId: string | null
+  creatorId: string | null
+  creatorNickname: string | null
+  creatorTier: string | null
 }> {
   try {
     const { data, error } = await supabase.rpc('accept_challenge', { p_token: token })
@@ -947,7 +950,10 @@ export async function acceptChallenge(token: string): Promise<{
         success: data[0].success,
         challengeId: data[0].challenge_id,
         message: data[0].message,
-        roomId: data[0].room_id
+        roomId: data[0].room_id,
+        creatorId: data[0].creator_id,
+        creatorNickname: data[0].creator_nickname,
+        creatorTier: data[0].creator_tier
       }
     }
 
@@ -955,14 +961,20 @@ export async function acceptChallenge(token: string): Promise<{
       success: false,
       challengeId: null,
       message: 'Errore sconosciuto',
-      roomId: null
+      roomId: null,
+      creatorId: null,
+      creatorNickname: null,
+      creatorTier: null
     }
   } catch (error) {
     return {
       success: false,
       challengeId: null,
       message: formatRpcError(error),
-      roomId: null
+      roomId: null,
+      creatorId: null,
+      creatorNickname: null,
+      creatorTier: null
     }
   }
 }
@@ -988,8 +1000,13 @@ export async function declineChallenge(token: string): Promise<boolean> {
  */
 export async function getChallengeByToken(token: string): Promise<{
   id: string | null
+  creatorId: string | null
   creatorName: string | null
   status: string | null
+  roomId: string | null
+  opponentId: string | null
+  opponentName: string | null
+  opponentTier: string | null
   createdAt: string | null
   expiresAt: string | null
   error: string | null
@@ -1002,8 +1019,13 @@ export async function getChallengeByToken(token: string): Promise<{
     if (data && data.length > 0) {
       return {
         id: data[0].id,
+        creatorId: data[0].creator_id,
         creatorName: data[0].creator_name,
         status: data[0].status,
+        roomId: data[0].room_id,
+        opponentId: data[0].opponent_id,
+        opponentName: data[0].opponent_name,
+        opponentTier: data[0].opponent_tier,
         createdAt: data[0].created_at,
         expiresAt: data[0].expires_at,
         error: null
@@ -1012,8 +1034,13 @@ export async function getChallengeByToken(token: string): Promise<{
 
     return {
       id: null,
+      creatorId: null,
       creatorName: null,
       status: null,
+      roomId: null,
+      opponentId: null,
+      opponentName: null,
+      opponentTier: null,
       createdAt: null,
       expiresAt: null,
       error: 'Sfida non trovata'
@@ -1021,8 +1048,13 @@ export async function getChallengeByToken(token: string): Promise<{
   } catch (error) {
     return {
       id: null,
+      creatorId: null,
       creatorName: null,
       status: null,
+      roomId: null,
+      opponentId: null,
+      opponentName: null,
+      opponentTier: null,
       createdAt: null,
       expiresAt: null,
       error: formatRpcError(error)
@@ -1061,6 +1093,128 @@ export async function getMyChallenges(): Promise<{
       challenges: [],
       error: formatRpcError(error)
     }
+  }
+}
+
+/**
+ * Ottieni la sfida attiva del creatore (per polling)
+ */
+export async function getMyActiveChallenge(): Promise<{
+  success: boolean
+  challenge: null | {
+    id: string
+    roomId: string | null
+    status: string
+    opponentName: string | null
+    opponentTier: string | null
+    opponentId: string | null
+  }
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_active_challenge')
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      return {
+        success: true,
+        challenge: {
+          id: data[0].id,
+          roomId: data[0].room_id,
+          status: data[0].status,
+          opponentName: data[0].opponent_name,
+          opponentTier: data[0].opponent_tier,
+          opponentId: data[0].opponent_id
+        },
+        error: null
+      }
+    }
+
+    return {
+      success: true,
+      challenge: null,
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      challenge: null,
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Debug: visualizza le sfide dell'utente corrente
+ */
+export async function debugChallenges(): Promise<{
+  success: boolean
+  challenges: Array<{
+    id: string
+    creatorId: string
+    creatorName: string | null
+    opponentId: string | null
+    status: string
+    roomId: string | null
+    createdAt: string
+  }>
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase.rpc('debug_my_challenges')
+
+    if (error) throw error
+
+    return {
+      success: true,
+      challenges: data?.map((c: any) => ({
+        id: c.id,
+        creatorId: c.creator_id,
+        creatorName: c.creator_name,
+        opponentId: c.opponent_id,
+        status: c.status,
+        roomId: c.room_id,
+        createdAt: c.created_at
+      })) || [],
+      error: null
+    }
+  } catch (error) {
+    return {
+      success: false,
+      challenges: [],
+      error: formatRpcError(error)
+    }
+  }
+}
+
+/**
+ * Completa una sfida (mark as completed after game ends)
+ */
+export async function completeChallenge(challengeId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('complete_challenge', { p_challenge_id: challengeId })
+
+    if (error) throw error
+
+    return data || false
+  } catch (error) {
+    return false
+  }
+}
+
+/**
+ * Marca una sfida come expired (quando la partita finisce)
+ */
+export async function expireChallenge(challengeId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('expire_challenge', { p_challenge_id: challengeId })
+
+    if (error) throw error
+
+    return data || false
+  } catch (error) {
+    return false
   }
 }
 

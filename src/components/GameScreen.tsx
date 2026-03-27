@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
 import { useAuthStore } from '../authStore';
+import { completeChallenge } from '../lib/rpc-client';
 import { CircularTimer } from './CircularTimer';
 import { TierBadge } from './TierBadge';
 import { motion, AnimatePresence } from 'motion/react';
@@ -58,8 +59,16 @@ export function GameScreen() {
   useEffect(() => {
     const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
     if (isGameOver) {
+      // Mark challenge as completed when game ends
+      const { currentChallengeId, gameMode: gm } = useGameStore.getState();
+      if (currentChallengeId && gm === 'pvp') {
+        completeChallenge(currentChallengeId).catch(console.error);
+      }
+
       const timer = setTimeout(() => {
         resetGame();
+        // Redirect to home
+        window.location.href = '/';
       }, 10000);
       return () => clearTimeout(timer);
     }
@@ -385,6 +394,10 @@ export function GameScreen() {
                   onClick={() => {
                     setShowAbandonModal(false);
                     abandonMatch();
+                    // Redirect to home after abandon
+                    setTimeout(() => {
+                      window.location.href = '/';
+                    }, 1000);
                   }}
                   className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors"
                 >

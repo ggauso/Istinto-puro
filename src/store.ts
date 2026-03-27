@@ -52,16 +52,20 @@ interface GameState {
   // Info avversario per PvP
   opponentInfo: { nickname: string; tier: string } | null;
 
+  // ID della sfida corrente (per completarla alla fine della partita)
+  currentChallengeId: string | null;
+
   setGameMode: (mode: 'pvp' | 'ai') => void;
   setSelectedLeague: (leagueId: number | null) => void;
   setSelectedDifficulty: (difficulty: number) => void;
   findMatch: () => void;
-  joinGameRoom: (roomId: string, isHost: boolean, opponentUserId?: string, opponentNicknameFromPresence?: string | null) => void;
+  joinGameRoom: (roomId: string, isHost: boolean, opponentUserId?: string, opponentNicknameFromPresence?: string | null, challengeId?: string) => void;
   fetchMatchAndBroadcast: () => Promise<void>;
   validatePlayer: (playerName: string) => Promise<boolean>;
   tickTimer: () => void;
   abandonMatch: () => void;
   resetGame: () => void;
+  setChallengeId: (id: string | null) => void;
   setStatus: (status: GameState['status']) => void;
   saveMatchResultToDb: (isWin: boolean, finalScore: number) => Promise<void>;
 }
@@ -92,6 +96,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastRarity: 1,
   lastCombo: 1,
   opponentInfo: null,
+  currentChallengeId: null,
 
   setGameMode: (mode) => set({ gameMode: mode }),
   setSelectedLeague: (leagueId) => set({ selectedLeague: leagueId }),
@@ -602,11 +607,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       opponentRoundsWon: 0,
       streak: 0,
       isHost: false,
-      opponentInfo: null
+      opponentInfo: null,
+      currentChallengeId: null
     });
   },
 
   setStatus: (status) => set({ status }),
+
+  setChallengeId: (id: string | null) => set({ currentChallengeId: id }),
 
   saveMatchResultToDb: async (isWin: boolean, finalScore: number) => {
     const { match, gameMode, score, selectedDifficulty } = get();
