@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getChallengeByToken, acceptChallenge, completeChallenge } from '../lib/rpc-client';
+import { getChallengeByToken, acceptChallenge, acceptFriendChallenge, completeChallenge, getFriendChallengeByRoomId, LEAGUE_TEXT_TO_ID } from '../lib/rpc-client';
 import { useAuthStore } from '../authStore';
 import { useGameStore } from '../store';
 import { motion } from 'motion/react';
@@ -17,7 +17,7 @@ import { Trophy, User, Check, X, Loader2, ArrowLeft, Send, Clock, Play } from 'l
 interface ChallengeScreenProps {
   token: string;
   onBack: () => void;
-  onAcceptChallenge: (roomId: string, opponentUserId: string, opponentNickname: string, opponentTier: string, isHost?: boolean, challengeId?: string) => void;
+  onAcceptChallenge: (roomId: string, opponentUserId: string, opponentNickname: string, opponentTier: string, isHost?: boolean, challengeId?: string, leagueId?: number, difficulty?: number) => void;
 }
 
 export function ChallengeScreen({ onBack, onAcceptChallenge, token }: ChallengeScreenProps) {
@@ -35,12 +35,17 @@ export function ChallengeScreen({ onBack, onAcceptChallenge, token }: ChallengeS
     opponentId: string | null;
     opponentName: string | null;
     opponentTier: string | null;
+    difficulty?: number;
+    league?: string;
   } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
+  const [isFriendChallenge, setIsFriendChallenge] = useState(false);
+  const [friendChallengeId, setFriendChallengeId] = useState<string | null>(null);
+  const [gameStarting, setGameStarting] = useState(false);
   const pollingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -58,6 +63,82 @@ export function ChallengeScreen({ onBack, onAcceptChallenge, token }: ChallengeS
 
   async function loadChallenge() {
     setLoading(true);
+
+    // Check if this is a friend challenge (token starts with "friend_")
+    if (token.startsWith('friend_')) {
+      const friendResult = await getFriendChallengeByRoomId(token);
+
+      if (!friendResult.success || !friendResult.challenge) {
+        setError('Sfida non trovata o scaduta.');
+        setLoading(false);
+        return;
+      }
+
+      const fc = friendResult.challenge;
+
+      // Mark as friend challenge
+      setIsFriendChallenge(true);
+      setFriendChallengeId(fc.id);
+
+      // Friend challenge is already finished - don't allow re-entry
+      if (fc.status === 'completed' || fc.status === 'abandoned' || fc.status === 'expired') {
+        setChallenge({
+          id: fc.id,
+          creatorId: fc.creator_id,
+          creatorName: fc.creator_nickname,
+          status: fc.status,
+          createdAt: fc.created_at,
+          expiresAt: fc.created_at,
+          roomId: null,
+          opponentId: null,
+          opponentName: null,
+          opponentTier: null
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Friend challenge is 'accepted' - start the game for both
+      if (fc.status === 'accepted') {
+        // Determine if user is creator or opponent
+        const isHost = user?.id === fc.creator_id;
+        const opponentUserId = isHost ? fc.opponent_id : fc.creator_id;
+        const opponentNickname = isHost ? fc.opponent_nickname : fc.creator_nickname;
+        const opponentTier = isHost ? fc.opponent_tier : fc.creator_tier;
+
+        // Convert league text to numeric ID
+        const leagueId = fc.league ? LEAGUE_TEXT_TO_ID[fc.league] : null;
+
+        // Mark game as starting and DON'T set loading to false to avoid flash
+        setGameStarting(true);
+
+        // Directly start the game with league and difficulty from challenge
+        setGameMode('pvp');
+        useGameStore.setState({ status: 'searching' });
+        onAcceptChallenge(fc.room_id, opponentUserId, opponentNickname, opponentTier, isHost, fc.id, leagueId || undefined, fc.difficulty);
+        // Don't return here - let the component stay in loading state until navigation happens
+      }
+
+      // Friend challenge is 'pending' - show waiting screen for creator, accept for opponent
+      setChallenge({
+        id: fc.id,
+        creatorId: fc.creator_id,
+        creatorName: fc.creator_nickname,
+        status: fc.status,
+        createdAt: fc.created_at,
+        expiresAt: fc.created_at,
+        roomId: fc.room_id,
+        opponentId: fc.opponent_id,
+        opponentName: fc.opponent_nickname,
+        opponentTier: fc.opponent_tier,
+        difficulty: fc.difficulty,
+        league: fc.league
+      });
+      setLoading(false);
+      return;
+    }
+
+    // Express challenge (old format)
     const result = await getChallengeByToken(token);
 
     // Challenge not found (completed/expired OR never existed) - show error
@@ -124,6 +205,26 @@ export function ChallengeScreen({ onBack, onAcceptChallenge, token }: ChallengeS
     }
 
     setAccepting(true);
+
+    // Handle friend challenge acceptance differently
+    if (isFriendChallenge && friendChallengeId) {
+      const result = await acceptFriendChallenge(friendChallengeId);
+
+      if (result && result.success) {
+        setAccepted(true);
+        setGameMode('pvp');
+        // Redirect to the same URL - the loadChallenge will detect status is 'accepted' and start game
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        setError(result?.error || 'Errore nell\'accettazione della sfida');
+      }
+      setAccepting(false);
+      return;
+    }
+
+    // Express challenge acceptance
     const result = await acceptChallenge(token);
 
     if (result.success && result.roomId) {
@@ -173,11 +274,14 @@ export function ChallengeScreen({ onBack, onAcceptChallenge, token }: ChallengeS
     });
   }
 
-  if (loading) {
+  // Keep showing loading spinner while game is starting (prevents flash)
+  if (loading || gameStarting) {
     return (
       <div className="min-h-screen bg-[#121212] text-white flex flex-col items-center justify-center p-4">
         <Loader2 className="animate-spin text-purple-400 w-12 h-12 mb-4" />
-        <p className="text-zinc-400">Caricamento sfida...</p>
+        <p className="text-zinc-400">
+          {gameStarting ? 'Avvio partita...' : 'Caricamento sfida...'}
+        </p>
       </div>
     );
   }

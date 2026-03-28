@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.friend_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   from_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   to_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'blocked')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(from_user_id, to_user_id)
@@ -49,6 +49,12 @@ ON public.friends FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
 
+-- Friends: utente può eliminare i propri amici
+CREATE POLICY "Users can delete own friends"
+ON public.friends FOR DELETE
+TO authenticated
+USING (user_id = auth.uid());
+
 -- Friend requests: utente può vedere le proprie richieste
 CREATE POLICY "Users can view own friend requests"
 ON public.friend_requests FOR SELECT
@@ -66,6 +72,12 @@ CREATE POLICY "Users can update received friend requests"
 ON public.friend_requests FOR UPDATE
 TO authenticated
 USING (to_user_id = auth.uid());
+
+-- Friend requests: utente può eliminare le proprie richieste
+CREATE POLICY "Users can delete own friend requests"
+ON public.friend_requests FOR DELETE
+TO authenticated
+USING (from_user_id = auth.uid() OR to_user_id = auth.uid());
 
 -- =====================================================
 -- FUNZIONI RPC
@@ -115,6 +127,7 @@ AS $$
 DECLARE
   v_from_user UUID;
   v_exists BOOLEAN;
+  v_blocked BOOLEAN;
 BEGIN
   v_from_user := auth.uid();
 
@@ -123,32 +136,37 @@ BEGIN
     RAISE EXCEPTION 'Non puoi aggiungere te stesso';
   END IF;
 
-  -- Verifica che non siano già amici
-  SELECT EXISTS(
-    SELECT 1 FROM public.friends
-    WHERE (user_id = v_from_user AND friend_id = p_to_user_id::UUID)
-       OR (user_id = p_to_user_id::UUID AND friend_id = v_from_user)
-  ) INTO v_exists;
-
-  IF v_exists THEN
-    RAISE EXCEPTION 'Siete già amici';
-  END IF;
-
-  -- Verifica che non ci sia già una richiesta pendente
+  -- Verifica se l'altro utente ti ha bloccato
   SELECT EXISTS(
     SELECT 1 FROM public.friend_requests
-    WHERE (from_user_id = v_from_user AND to_user_id = p_to_user_id::UUID AND status = 'pending')
-       OR (from_user_id = p_to_user_id::UUID AND to_user_id = v_from_user AND status = 'pending')
+    WHERE from_user_id = p_to_user_id::UUID
+      AND to_user_id = v_from_user
+      AND status = 'blocked'
+  ) INTO v_blocked;
+
+  IF v_blocked THEN
+    RAISE EXCEPTION 'Non puoi inviare richiesta a questo utente';
+  END IF;
+
+  -- Verifica che non ci sia già una richiesta pendente (accettata o pending)
+  SELECT EXISTS(
+    SELECT 1 FROM public.friend_requests
+    WHERE (from_user_id = v_from_user AND to_user_id = p_to_user_id::UUID AND status IN ('pending', 'accepted'))
+       OR (from_user_id = p_to_user_id::UUID AND to_user_id = v_from_user AND status IN ('pending', 'accepted'))
   ) INTO v_exists;
 
   IF v_exists THEN
-    RAISE EXCEPTION 'Esiste già una richiesta pendente';
+    RAISE EXCEPTION 'Esiste già una richiesta pendente o siete già amici';
   END IF;
 
-  -- Crea la richiesta
+  -- Crea la richiesta (rimuovi prima eventuali richieste rifiutate o vecchie)
+  DELETE FROM public.friend_requests
+  WHERE (from_user_id = v_from_user AND to_user_id = p_to_user_id::UUID)
+     OR (from_user_id = p_to_user_id::UUID AND to_user_id = v_from_user)
+  AND status IN ('rejected', 'blocked');
+
   INSERT INTO public.friend_requests (from_user_id, to_user_id, status)
-  VALUES (v_from_user, p_to_user_id::UUID, 'pending')
-  ON CONFLICT (from_user_id, to_user_id) DO NOTHING;
+  VALUES (v_from_user, p_to_user_id::UUID, 'pending');
 
   RETURN TRUE;
 END;
@@ -234,6 +252,64 @@ BEGIN
   DELETE FROM public.friends
   WHERE (user_id = v_current_user AND friend_id = p_friend_id)
      OR (user_id = p_friend_id AND friend_id = v_current_user);
+
+  RETURN TRUE;
+END;
+$$;
+
+-- Blocca utente
+DROP FUNCTION IF EXISTS public.block_user(UUID);
+CREATE FUNCTION public.block_user(p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_current_user UUID;
+BEGIN
+  v_current_user := auth.uid();
+
+  -- Non puoi bloccare te stesso
+  IF v_current_user = p_user_id THEN
+    RAISE EXCEPTION 'Non puoi bloccare te stesso';
+  END IF;
+
+  -- Rimuovi prima eventuali amicizie
+  DELETE FROM public.friends
+  WHERE (user_id = v_current_user AND friend_id = p_user_id)
+     OR (user_id = p_user_id AND friend_id = v_current_user);
+
+  -- Rimuovi/Rifiuta richieste pendenti
+  DELETE FROM public.friend_requests
+  WHERE (from_user_id = v_current_user AND to_user_id = p_user_id)
+     OR (from_user_id = p_user_id AND to_user_id = v_current_user);
+
+  -- Blocca l'utente (crea richiesta con status blocked)
+  INSERT INTO public.friend_requests (from_user_id, to_user_id, status)
+  VALUES (v_current_user, p_user_id, 'blocked')
+  ON CONFLICT (from_user_id, to_user_id) DO UPDATE SET status = 'blocked';
+
+  RETURN TRUE;
+END;
+$$;
+
+-- Sblocca utente
+DROP FUNCTION IF EXISTS public.unblock_user(UUID);
+CREATE FUNCTION public.unblock_user(p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_current_user UUID;
+BEGIN
+  v_current_user := auth.uid();
+
+  -- Rimuovi il blocco
+  DELETE FROM public.friend_requests
+  WHERE from_user_id = v_current_user
+    AND to_user_id = p_user_id
+    AND status = 'blocked';
 
   RETURN TRUE;
 END;
@@ -401,3 +477,19 @@ $$;
 
 --Sono amici?
 -- SELECT public.are_friends('uuid-altro-utente');
+
+-- =====================================================
+-- GRANTS
+-- =====================================================
+
+GRANT EXECUTE ON FUNCTION public.search_users TO authenticated;
+GRANT EXECUTE ON FUNCTION public.send_friend_request TO authenticated;
+GRANT EXECUTE ON FUNCTION public.accept_friend_request TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reject_friend_request TO authenticated;
+GRANT EXECUTE ON FUNCTION public.remove_friend TO authenticated;
+GRANT EXECUTE ON FUNCTION public.block_user TO authenticated;
+GRANT EXECUTE ON FUNCTION public.unblock_user TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_friends TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_pending_friend_requests TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_sent_friend_requests TO authenticated;
+GRANT EXECUTE ON FUNCTION public.are_friends TO authenticated;

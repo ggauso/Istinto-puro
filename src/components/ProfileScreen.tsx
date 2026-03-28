@@ -2,15 +2,16 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useAuthStore } from '../authStore';
 import { TierBadge } from './TierBadge';
 import { calculateTier, getTierProgress, getNextTierScore } from '../lib/game-utils';
-import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend, getFriends, getPendingFriendRequests, getUserStats, getStatsByDifficulty, getStatsByOpponentTier, getMonthlyActivity, getResultDistribution, type UserStats, type StatsByDifficulty, type StatsByOpponentTier, type MonthlyActivity, type ResultDistribution } from '../lib/rpc-client';
-import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff, Search, UserPlus, Check, Trash2, Send, Users, Loader2 } from 'lucide-react';
+import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend, getFriends, getPendingFriendRequests, getUserStats, getStatsByDifficulty, getStatsByOpponentTier, getMonthlyActivity, getResultDistribution, createChallenge, createFriendChallenge, acceptFriendChallenge, declineFriendChallenge, getPendingFriendChallenges, getFriendChallengeHistory, type UserStats, type StatsByDifficulty, type StatsByOpponentTier, type MonthlyActivity, type ResultDistribution } from '../lib/rpc-client';
+import { ArrowLeft, LogOut, Trophy, Target, Medal, User, Edit2, Save, X, Lock, Eye, EyeOff, Search, UserPlus, Check, Trash2, Send, Users, Loader2, Play, Copy, CheckCircle, Zap, Clock, Gamepad2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ProfileScreenProps {
   onBack: () => void;
+  onChallengeFriend?: (friendId: string, friendName: string, friendTier: string) => void;
 }
 
-export function ProfileScreen({ onBack }: ProfileScreenProps) {
+export function ProfileScreen({ onBack, onChallengeFriend }: ProfileScreenProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -41,7 +42,21 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [friends, setFriends] = useState<any[]>([]);
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
-  const [friendsTab, setFriendsTab] = useState<'search' | 'friends' | 'requests'>('search');
+  const [friendsTab, setFriendsTab] = useState<'search' | 'friends' | 'requests' | 'challenges'>('search');
+
+  // Friend challenge modal state
+  const [challengeModal, setChallengeModal] = useState<{
+    show: boolean;
+    friendId: string;
+    friendName: string;
+    friendTier: string;
+    difficulty: number;
+    league: string;
+  } | null>(null);
+  const [creatingChallenge, setCreatingChallenge] = useState(false);
+  const [pendingChallenges, setPendingChallenges] = useState<any[]>([]);
+  const [challengeHistory, setChallengeHistory] = useState<any[]>([]);
+  const [loadingChallenges, setLoadingChallenges] = useState(false);
 
   // Stats section
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -61,6 +76,16 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     distribution: []
   });
   const [loadingAdvancedStats, setLoadingAdvancedStats] = useState(false);
+
+  // Toast notifications
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const previousRequestsCountRef = useRef(0);
+
+  // Show toast notification
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const { changePassword } = useAuthStore();
 
@@ -125,11 +150,94 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     }
   };
 
+  // Challenge friend state
+  const [challengingFriend, setChallengingFriend] = useState<string | null>(null);
+  const [challengeLink, setChallengeLink] = useState<{ url: string; token: string } | null>(null);
+
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   // Load friends and requests
   useEffect(() => {
     if (!user) return;
     loadFriendsData();
   }, [user]);
+
+  // State for toast with action
+  const [toastWithAction, setToastWithAction] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+    action?: () => void;
+    actionLabel?: string;
+  } | null>(null);
+
+  // Auto-clear toastWithAction after 6 seconds (longer to allow user to click)
+  useEffect(() => {
+    if (toastWithAction) {
+      const timer = setTimeout(() => setToastWithAction(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastWithAction]);
+
+  // Polling for friend requests (every 5 minutes)
+  useEffect(() => {
+    if (!user) return;
+    const pollInterval = setInterval(async () => {
+      const prevCount = previousRequestsCountRef.current;
+      await loadFriendsData();
+      const newCount = friendRequests.length;
+      // Check if new requests arrived
+      if (newCount > prevCount) {
+        const addedCount = newCount - prevCount;
+        setToastWithAction({
+          message: `Hai ${addedCount} nuova${addedCount > 1 ? 'e' : ''} richiesta${addedCount > 1 ? 'e' : ''} di amicizia!`,
+          type: 'info',
+          action: () => {
+            setMainTab('friends');
+            setFriendsTab('requests');
+          },
+          actionLabel: 'Vedi Richieste'
+        });
+      }
+      previousRequestsCountRef.current = newCount;
+    }, 300000); // 5 minutes
+    return () => clearInterval(pollInterval);
+  }, [user]);
+
+  // Ref for pending challenges count (only opponent challenges)
+  const previousOpponentChallengesCountRef = useRef(0);
+
+  // Polling for friend challenges (every 30 seconds when on friends tab)
+  useEffect(() => {
+    if (!user) return;
+    const pollInterval = setInterval(async () => {
+      await loadChallenges();
+      // Only count challenges where user is the OPPONENT (received challenges)
+      const opponentChallenges = pendingChallenges.filter(c => c.opponent_id === user.id);
+      const prevCount = previousOpponentChallengesCountRef.current;
+      const newCount = opponentChallenges.length;
+      // Check if new challenges arrived (only for received challenges)
+      if (newCount > prevCount) {
+        const addedCount = newCount - prevCount;
+        setToastWithAction({
+          message: `Hai ${addedCount} nuova${addedCount > 1 ? 'e' : ''} sfida${addedCount > 1 ? 'e' : ''} da amico${addedCount > 1 ? 'i' : ''}!`,
+          type: 'info',
+          action: () => {
+            setMainTab('friends');
+            setFriendsTab('challenges');
+          },
+          actionLabel: 'Vedi Sfide'
+        });
+      }
+      previousOpponentChallengesCountRef.current = newCount;
+    }, 30000); // 30 seconds
+    return () => clearInterval(pollInterval);
+  }, [user, pendingChallenges.length]);
 
   // Load stats
   useEffect(() => {
@@ -203,20 +311,87 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     setLoadingFriends(false);
   }
 
+  // Load friend challenges
+  async function loadChallenges() {
+    setLoadingChallenges(true);
+    try {
+      const [pendingResult, historyResult] = await Promise.all([
+        getPendingFriendChallenges(),
+        getFriendChallengeHistory()
+      ]);
+      if (pendingResult.success) setPendingChallenges(pendingResult.challenges);
+      if (historyResult.success) setChallengeHistory(historyResult.history);
+    } catch (err) {
+      console.error('Error loading challenges:', err);
+    }
+    setLoadingChallenges(false);
+  }
+
+  // Create friend challenge
+  async function handleCreateFriendChallenge() {
+    if (!challengeModal) return;
+    setCreatingChallenge(true);
+
+    const result = await createFriendChallenge(
+      challengeModal.friendId,
+      challengeModal.difficulty,
+      challengeModal.league
+    );
+
+    if (result.success) {
+      showToast('Sfida inviata! Attendine l\'accettazione.', 'success');
+      setChallengeModal(null);
+      loadChallenges();
+    } else {
+      showToast(result.error || 'Errore nell\'invio della sfida', 'error');
+    }
+
+    setCreatingChallenge(false);
+  }
+
+  // Accept friend challenge
+  async function handleAcceptFriendChallenge(challengeId: string) {
+    const result = await acceptFriendChallenge(challengeId);
+
+    if (result.success && result.roomId) {
+      showToast('Sfida accettata! La partita sta per iniziare...', 'success');
+      loadChallenges();
+      // Here we would navigate to the game - need to integrate with App.tsx
+    } else {
+      showToast(result.error || 'Errore nell\'accettazione della sfida', 'error');
+    }
+  }
+
+  // Decline friend challenge
+  async function handleDeclineFriendChallenge(challengeId: string) {
+    const result = await declineFriendChallenge(challengeId);
+
+    if (result.success) {
+      showToast('Sfida rifiutata', 'info');
+      loadChallenges();
+    } else {
+      showToast(result.error || 'Errore nel rifiuto della sfida', 'error');
+    }
+  }
+
   async function handleSearch() {
     if (!searchQuery.trim()) return;
     setSearching(true);
+    console.log('Searching for:', searchQuery);
     const result = await searchUsers(searchQuery);
+    console.log('Search result:', result);
     if (result.success) setSearchResults(result.users);
     setSearching(false);
   }
 
   async function handleSendFriendRequest(userId: string) {
+    console.log('Sending friend request to:', userId);
     const result = await sendFriendRequest(userId);
+    console.log('Result:', result);
     if (result.success) {
       setSearchResults(prev => prev.filter(u => u.id !== userId));
     } else {
-      alert(result.error || 'Errore nell\'invio della richiesta');
+      showToast(result.error || 'Errore nell\'invio della richiesta', 'error');
     }
   }
 
@@ -235,11 +410,47 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
     }
   }
 
-  async function handleRemoveFriend(friendId: string) {
-    if (!confirm('Sei sicuro di voler rimuovere questo amico?')) return;
-    const result = await removeFriend(friendId);
-    if (result.success) {
-      setFriends(prev => prev.filter(f => f.id !== friendId));
+  async function handleRemoveFriend(friendId: string, friendName: string) {
+    setConfirmModal({
+      show: true,
+      title: 'Rimuovi Amico',
+      message: `Sei sicuro di voler rimuovere ${friendName} dai tuoi amici?`,
+      onConfirm: async () => {
+        console.log('Removing friend:', friendId);
+        try {
+          const result = await removeFriend(friendId);
+          console.log('Remove result:', result);
+          if (result.success) {
+            // Ricarica lista amici dal DB per conferma
+            await loadFriendsData();
+            showToast('Amico rimosso con successo', 'success');
+          } else {
+            showToast(result.error || 'Errore nella rimozione', 'error');
+          }
+        } catch (err) {
+          console.error('Remove friend error:', err);
+          showToast('Errore nella rimozione', 'error');
+        }
+        setConfirmModal(null);
+      }
+    });
+  }
+
+  async function handleChallengeFriend(friendId: string, friendName: string, friendTier: string) {
+    // Open modal to configure challenge
+    setChallengeModal({
+      show: true,
+      friendId,
+      friendName,
+      friendTier,
+      difficulty: 1,
+      league: 'seria_a'
+    });
+  }
+
+  async function copyChallengeLink() {
+    if (challengeLink?.url) {
+      await navigator.clipboard.writeText(challengeLink.url);
     }
   }
 
@@ -1028,6 +1239,20 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                     </span>
                   )}
                 </button>
+                <button
+                  onClick={() => { setFriendsTab('challenges'); loadChallenges(); }}
+                  className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors relative ${
+                    friendsTab === 'challenges' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Zap className="w-4 h-4 inline mr-1" />
+                  Sfide
+                  {pendingChallenges.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                      {pendingChallenges.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Search Tab */}
@@ -1097,12 +1322,27 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                               {friend.tier && <span className="text-xs text-zinc-400">Tier: {friend.tier}</span>}
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleRemoveFriend(friend.id)}
-                            className="p-2 text-red-400 hover:text-red-300"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleChallengeFriend(friend.friendId, friend.nickname || friend.email?.split('@')[0] || 'Amico', friend.tier || 'bronze')}
+                              disabled={creatingChallenge && challengingFriend === friend.friendId}
+                              className="p-2 bg-yellow-600 rounded-lg text-white hover:bg-yellow-500 disabled:opacity-50"
+                              title="Sfida diretta"
+                            >
+                              {creatingChallenge && challengingFriend === friend.friendId ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Zap className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveFriend(friend.friendId, friend.nickname || friend.email?.split('@')[0] || 'Amico')}
+                              className="p-2 text-red-400 hover:text-red-300"
+                              title="Rimuovi"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1150,8 +1390,283 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                   )}
                 </div>
               )}
+
+              {/* Challenges Tab */}
+              {friendsTab === 'challenges' && (
+                <div>
+                  {loadingChallenges ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-yellow-500" />
+                    </div>
+                  ) : pendingChallenges.length > 0 ? (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">In Attesa</h3>
+                      {pendingChallenges.map((challenge) => {
+                        const isCreator = challenge.creator_id === user?.id;
+                        return (
+                          <div key={challenge.id} className="bg-zinc-800/50 p-4 rounded-xl">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
+                                  <User className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                  <div className="font-medium text-white">
+                                    {isCreator ? challenge.opponent_nickname : challenge.creator_nickname}
+                                  </div>
+                                  <div className="text-xs text-zinc-400">
+                                    {challenge.difficulty === 1 ? 'Facile' : challenge.difficulty === 2 ? 'Medio' : 'Difficile'} • {challenge.league.toUpperCase()}
+                                  </div>
+                                </div>
+                              </div>
+                              {!isCreator && (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleAcceptFriendChallenge(challenge.id)}
+                                    className="p-2 bg-green-600 rounded-lg text-white hover:bg-green-500"
+                                    title="Accetta"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeclineFriendChallenge(challenge.id)}
+                                    className="p-2 bg-red-600 rounded-lg text-white hover:bg-red-500"
+                                    title="Rifiuta"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                              {isCreator && (
+                                <span className="text-xs text-yellow-500 font-medium">In attesa...</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-center text-zinc-500 py-4">Nessuna sfida in attesa</p>
+                  )}
+
+                  {/* Challenge History */}
+                  {challengeHistory.length > 0 && (
+                    <div className="mt-6 space-y-3">
+                      <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">Giocate</h3>
+                      {challengeHistory.map((challenge) => {
+                        const isWinner = challenge.result === 'creator_won';
+                        const isDraw = challenge.result === 'abandoned';
+                        return (
+                          <div key={challenge.id} className="bg-zinc-800/30 p-3 rounded-xl flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center">
+                                <User className="w-4 h-4 text-zinc-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-white text-sm">{challenge.opponent_nickname}</div>
+                                <div className="text-xs text-zinc-500">
+                                  {challenge.difficulty === 1 ? 'Facile' : challenge.difficulty === 2 ? 'Medio' : 'Difficile'} • {challenge.league.toUpperCase()}
+                                </div>
+                              </div>
+                            </div>
+                            <div className={`font-bold ${isDraw ? 'text-zinc-400' : isWinner ? 'text-green-400' : 'text-red-400'}`}>
+                              {isDraw ? 'Abbandonato' : isWinner ? 'Vittoria' : 'Sconfitta'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
+        )}
+
+        {/* Challenge Link Modal */}
+        {challengeLink && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-[#1E1E1E] border border-purple-500/30 rounded-3xl p-6 max-w-md w-full">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Play className="w-8 h-8 text-purple-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">Sfida Creata!</h2>
+                <p className="text-zinc-400 mt-2">Condividi il link con il tuo amico</p>
+              </div>
+
+              <div className="bg-zinc-900 rounded-xl p-4 mb-4">
+                <input
+                  type="text"
+                  value={challengeLink.url}
+                  readOnly
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setChallengeLink(null)}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                >
+                  Chiudi
+                </button>
+                <button
+                  onClick={copyChallengeLink}
+                  className="flex-1 py-3 rounded-xl font-bold text-black bg-[#FFD700] hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copia Link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Modal */}
+        {confirmModal?.show && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-[#1E1E1E] border border-zinc-700 rounded-3xl p-6 max-w-sm w-full"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trash2 className="w-8 h-8 text-red-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">{confirmModal.title}</h2>
+                <p className="text-zinc-400 mt-2">{confirmModal.message}</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={confirmModal.onConfirm}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-red-600 hover:bg-red-500 transition-colors"
+                >
+                  Rimuovi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Challenge Friend Modal */}
+        {challengeModal?.show && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-[#1E1E1E] border border-yellow-500/30 rounded-3xl p-6 max-w-sm w-full"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Zap className="w-8 h-8 text-yellow-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">Sfida {challengeModal.friendName}</h2>
+                <p className="text-zinc-400 mt-2">Configura la tua sfida</p>
+              </div>
+
+              {/* Difficulty Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Difficoltà</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 1, label: 'Facile', color: 'bg-green-600' },
+                    { value: 2, label: 'Medio', color: 'bg-yellow-600' },
+                    { value: 3, label: 'Difficile', color: 'bg-red-600' }
+                  ].map((diff) => (
+                    <button
+                      key={diff.value}
+                      onClick={() => setChallengeModal({ ...challengeModal, difficulty: diff.value })}
+                      className={`py-2 rounded-lg font-medium transition-colors ${
+                        challengeModal.difficulty === diff.value
+                          ? diff.color + ' text-white'
+                          : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                      }`}
+                    >
+                      {diff.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* League Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Campionato</label>
+                <select
+                  value={challengeModal.league}
+                  onChange={(e) => setChallengeModal({ ...challengeModal, league: e.target.value })}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-yellow-500"
+                >
+                  <option value="seria_a">Serie A 🇮🇹</option>
+                  <option value="premier">Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿</option>
+                  <option value="la_liga">La Liga 🇪🇸</option>
+                  <option value="bundesliga">Bundesliga 🇩🇪</option>
+                  <option value="ligue_1">Ligue 1 🇫🇷</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setChallengeModal(null)}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={handleCreateFriendChallenge}
+                  disabled={creatingChallenge}
+                  className="flex-1 py-3 rounded-xl font-bold text-black bg-yellow-500 hover:bg-yellow-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {creatingChallenge ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5" />
+                      Invia Sfida
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {(toast || toastWithAction) && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 ${
+              (toastWithAction || toast)?.type === 'success' ? 'bg-green-600' :
+              (toastWithAction || toast)?.type === 'error' ? 'bg-red-600' :
+              'bg-purple-600'
+            }`}
+          >
+            {(toastWithAction || toast)?.type === 'success' && <CheckCircle className="w-5 h-5" />}
+            {(toastWithAction || toast)?.type === 'error' && <X className="w-5 h-5" />}
+            {(toastWithAction || toast)?.type === 'info' && <UserPlus className="w-5 h-5" />}
+            <span className="font-medium text-white">{(toastWithAction || toast)?.message}</span>
+            {toastWithAction?.action && (
+              <button
+                onClick={() => {
+                  toastWithAction.action?.();
+                  setToastWithAction(null);
+                }}
+                className="ml-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium text-white transition-colors"
+              >
+                {toastWithAction.actionLabel}
+              </button>
+            )}
+          </motion.div>
         )}
       </div>
     </div>

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from './lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuthStore } from './authStore';
-import { saveMatchResult, getUserInfo, recordGameAudit } from './lib/rpc-client';
+import { saveMatchResult, getUserInfo, recordGameAudit, completeFriendChallenge, abandonFriendChallenge } from './lib/rpc-client';
 import { calculateTier, generateGuestName } from './lib/game-utils';
 
 export interface Team {
@@ -567,9 +567,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   abandonMatch: () => {
-    const { status, gameMode, gameChannel, playerId, score } = get();
+    const { status, gameMode, gameChannel, playerId, score, currentChallengeId } = get();
     const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
-    
+
+    // Abbandona la sfida amichevole se presente
+    if (currentChallengeId && gameMode === 'pvp') {
+      abandonFriendChallenge(currentChallengeId).catch(err => console.error('Errore abbandono sfida amica:', err));
+    }
+
     if (!isGameOver) {
       if (gameMode === 'pvp') {
         if (gameChannel) {
@@ -586,7 +591,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         useAuthStore.getState().updateProfileStats(false, score, true);
       }
     }
-    
+
     get().resetGame();
   },
 
@@ -617,10 +622,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   setChallengeId: (id: string | null) => set({ currentChallengeId: id }),
 
   saveMatchResultToDb: async (isWin: boolean, finalScore: number) => {
-    const { match, gameMode, score, selectedDifficulty } = get();
+    const { match, gameMode, score, selectedDifficulty, currentChallengeId, isHost, playerRoundsWon, opponentRoundsWon } = get();
     const { user } = useAuthStore.getState();
 
     if (!user || !match) return;
+
+    // Completa la sfida amichevole se presente
+    if (currentChallengeId && gameMode === 'pvp') {
+      const winnerId = isWin ? user.id : match.opponent_id;
+      const creatorScore = isHost ? playerRoundsWon : opponentRoundsWon;
+      const opponentScore = isHost ? opponentRoundsWon : playerRoundsWon;
+
+      completeFriendChallenge(
+        currentChallengeId,
+        winnerId,
+        creatorScore,
+        opponentScore
+      ).catch(err => console.error('Errore completamento sfida amica:', err));
+    }
 
     // Determina il nome del giocatore
     const { profile } = useAuthStore.getState();

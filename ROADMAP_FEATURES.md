@@ -108,17 +108,18 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 ---
 
-## 🤝 MILESTONE 6: Sfide Express (Link)
+## 🤝 MILESTONE 6: Sfide Express (Link) ✅ COMPLETATO
 
 **Tempo stimato:** 2-3 ore
 **Priorità:** ALTA
+**Stato:** ✅ COMPLETATO
 
 ### Task 6.1: Creazione Link Sfida
 - [x] **Task 6.1.1:** Generare link univoco per sfida (es. `istintopuro.com/sfida/abc123`)
 - [x] **Task 6.1.2:** Salvare sfida nel DB con stato (pending, accepted, completed, expired)
 - [x] **Task 6.1.3:** UI per creare nuova sfida (bottone nella home)
 - [x] **Task 6.1.4:** Bottone per copiare link negli appunti
-- [ ] **Task 6.1.5:** Mostra QR code per condividere su mobile
+- [ ] **Task 6.1.5:** Mostra QR code per condividere su mobile (OPZIONALE)
 
 ### Task 6.2: Accettazione Sfida
 - [x] **Task 6.2.1:** Pagina pubblica per visualizzare dettagli sfida (senza login)
@@ -137,11 +138,27 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 ### Task 6.4: Protezione Ri-accesso
 - [x] **Task 6.4.1:** Se sfida già completata/expired → mostra "Sfida non disponibile"
 - [x] **Task 6.4.2:** get_challenge_by_token filtra solo status 'pending' o 'accepted'
-- [ ] **Task 6.4.3:** Cleanup automatico sfide expired (cron job)
+- [x] **Task 6.4.3:** Filtro automatico sfide vecchie (10 minuti)
 
-### Task 6.5: Partita Privata
+### Task 6.5: Partita Privata (FUTURO)
 - [ ] **Task 6.5.1:** Risultato NON appare in leaderboard globale (solo nel profilo)
 - [ ] **Task 6.5.2:** Storico sfide nel profilo
+
+### File SQL creati per Sfide Express:
+- `alter-008-challenges.sql` - Schema iniziale sfide
+- `alter-011-fix-challenges.sql` - Fix base
+- `alter-012-add-creator-id.sql` - Aggiunge creator_id
+- `alter-013-fix-challenge-status.sql` - Filtra status
+- `alter-014-fix-get-my-active-challenge.sql` - Fix polling
+- `alter-015-cleanup-challenges.sql` - Cleanup automatico
+- `alter-016-update-create-challenge.sql` - Cleanup prima di creare
+- `alter-017-get-challenge-details.sql` - Dettagli sfida
+- `alter-018-fix-filter.sql` - Filtro 10 minuti
+- `alter-019-cleanup-and-filter.sql` - Cleanup finale
+- `alter-020-fix-complete-status.sql` - Status completed
+
+### Test creati:
+- `src/test/challenges.test.ts` - 26 test per il sistema sfide
 
 ---
 
@@ -149,6 +166,7 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 **Tempo stimato:** 2-3 ore
 **Priorità:** ALTA
+**Stato:** ✅ COMPLETATO
 
 ### Task 6b.1: Ricerca Utenti
 - [x] **Task 6b.1.1:** Creare tabella `friends` (user_id, friend_id, status, created_at)
@@ -158,7 +176,7 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 
 ### Task 6b.2: Richieste di Amicizia
 - [x] **Task 6b.2.1:** Invia richiesta amicizia
-- [x] **Task 6b.2.2:** Notifica richieste ricevute (badge con count)
+- [x] **Task 6b.2.2:** Notifica real-time richieste ricevute (polling ogni 15s)
 - [x] **Task 6b.2.3:** Accetta/rifiuta richiesta
 - [x] **Task 6b.2.4:** Lista richieste in sospeso
 
@@ -166,13 +184,105 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 - [x] **Task 6b.3.1:** Mostra lista amici nel profilo
 - [x] **Task 6b.3.2:** Visualizza info base amico (tier)
 - [x] **Task 6b.3.3:** Rimuovi amico
-- [ ] **Task 6b.3.4:** Blocca utente (non può inviarti richieste)
+- [x] **Task 6b.3.4:** Toast con pulsante per nuove richieste (polling 5min)
 
-### Task 6b.4: Sfida Amico
-- [ ] **Task 6b.4.1:** Bottone "Sfida" accanto ad ogni amico
-- [ ] **Task 6b.4.2:** Notifica all'amico della sfida
-- [ ] **Task 6b.4.3:** Accetta/rifiuta sfida dalla lista amici
-- [ ] **Task 6b.4.4:** Storico sfide vs amici
+### File SQL per Amicizie:
+- `supabase/alter-009-friends.sql` - Schema iniziale amicizie
+
+---
+
+## 🎮 MILESTONE 6c: Sfide Dirette tra Amici (IN PROGRESS)
+
+**Tempo stimato:** 4-5 ore
+**Priorità:** ALTA
+**Stato:** 🔄 IN PROGRESS
+
+### Descrizione Funzionalità:
+- Sfida diretta amico dalla lista amici senza bisogno di condividere link
+- Parametri configurabili (difficoltà, campionato)
+- Notifica in tempo reale della sfida ricevuta
+- Accettazione/Declino sfida
+- Storico sfide giocate
+
+### Task 6c.1: Struttura DB per Sfide Amici
+- [x] **Task 6c.1.1:** Creare tabella `friend_challenges` (id, creator_id, opponent_id, difficulty, league, status, room_id, created_at, expires_at)
+- [x] **Task 6c.1.2:** Creare tabella `friend_challenge_history` (challenge_id, creator_id, opponent_id, difficulty, league, winner_id, score, created_at)
+- [x] **Task 6c.1.3:** Aggiungere indici e RLS policies
+
+### Task 6c.2: Funzioni RPC
+- [x] **Task 6c.2.1:** `create_friend_challenge(opponent_id, difficulty, league)` - Crea sfida e room
+- [x] **Task 6c.2.2:** `accept_friend_challenge(challenge_id)` - Accetta sfida
+- [x] **Task 6c.2.3:** `decline_friend_challenge(challenge_id)` - Rifiuta sfida
+- [x] **Task 6c.2.4:** `get_pending_friend_challenges()` - Lista sfide in attesa
+- [x] **Task 6c.2.5:** `get_friend_challenge_history()` - Storico sfide
+- [x] **Task 6c.2.6:** `get_friend_challenge_by_id(id)` - Dettagli sfida (integrato in accept)
+
+### Task 6c.3: UI - Modal Configurazione Sfida
+- [x] **Task 6c.3.1:** Aggiungere nuova icona (Zap) accanto a "Sfida" link nella lista amici
+- [x] **Task 6c.3.2:** Creare modal con selezione difficoltà (Facile/Medio/Difficile)
+- [x] **Task 6c.3.3:** Creare modal con selezione campionato
+- [x] **Task 6c.3.4:** Bottone "Invia Sfida" nel modal
+
+### Task 6c.4: UI - Notifica Sfida Ricevuta
+- [x] **Task 6c.4.1:** Polling ogni 30 secondi per sfide in attesa (quando utente è nella scheda Amici)
+- [x] **Task 6c.4.2:** Toast con pulsante "Accetta"/"Rifiuta" per sfide ricevute
+- [ ] **Task 6c.4.3:** Se sfida accettata, navigare a /sfida/token per entrambi (richiede integrazione App.tsx)
+
+### Task 6c.5: UI - Lista Sfide
+- [x] **Task 6c.5.1:** Nuova scheda "Sfide" nel profilo accanto a "Amici"
+- [x] **Task 6c.5.2:** Tab "In Attesa" - Mostra sfide inviate/ricevute in attesa
+- [x] **Task 6c.5.3:** Tab "Giocate" - Mostra storico sfide con esito (Vittoria/Sconfitta/Abbandono)
+- [x] **Task 6c.5.4:** Dettagli sfida (data, avversario, difficoltà, risultato)
+
+### Task 6c.6: Gestione Room e Game
+- [ ] **Task 6c.6.1:** Usare stessa logica delle sfide express per room/game
+- [ ] **Task 6c.6.2:** Chiudere room quando sfida finita o abbandonata
+- [ ] **Task 6c.6.3:** Impedire re-accesso a sfide completate/expired
+
+### File SQL da creare:
+- `supabase/alter-021-friend-challenges.sql` - Schema per sfide tra amici
+
+### Test da creare:
+- `src/test/friend-challenges.test.ts` - Test per sistema sfide amici
+
+### Piano Implementativo Step-by-Step:
+
+**Step 1: DB e Schema**
+1. Creare alter-021-friend-challenges.sql con tabelle
+2. Aggiungere RLS policies
+3. Aggiungere grants
+
+**Step 2: Funzioni RPC**
+1. Implementare create_friend_challenge
+2. Implementare accept/decline friend challenge
+3. Implementare get_pending_friend_challenges
+4. Implementare get_friend_challenge_history
+
+**Step 3: Frontend - rpc-client.ts**
+1. Aggiungere funzioni wrapper per le nuove RPC
+
+**Step 4: Frontend - UI Modale Sfida**
+1. Aggiungere icona sfida diretta accanto a Play
+2. Creare ChallengeFriendModal.tsx
+3. Integrare nella ProfileScreen
+
+**Step 5: Frontend - Notifiche**
+1. Aggiungere polling per sfide ricevute
+2. Creare toast con azioni accept/decline
+3. Gestione navigazione a sfida
+
+**Step 6: Frontend - Lista Sfide**
+1. Nuova scheda "Sfide" nel profilo
+2. Tab in attesa
+3. Tab giocate
+
+**Step 7: Test**
+1. Creare test per tutte le funzioni RPC
+2. Test UI per modal e toast
+
+---
+
+**Dipendenze:** Richiede Milestone 6b (Sistema Amicizie) completato
 
 ---
 
@@ -327,16 +437,17 @@ Questo documento definisce le milestone e i task per implementare le nuove featu
 | 1. Identità Utente | 2-3h | ✅ Completato |
 | 2. Classifica Generale | 2-3h | ✅ Completato |
 | 3. Tier System | 2-3h | ✅ Completato |
-| 4. Test e Validazione | 1-2h | ✅ Completato (103 test) |
+| 4. Test e Validazione | 1-2h | ✅ Completato (129 test) |
 | 5. Tornei | 3-4h | ⏳ Todo |
-| 6. Sfide Express (Link) | 1-2h | 🔄 In pausa (parziale) |
-| 6b. Sistema Amicizie | 2-3h | ✅ Completato (eseguire SQL) |
+| 6. Sfide Express (Link) | 2-3h | ✅ Completato |
+| 6b. Sistema Amicizie | 2-3h | ✅ Completato |
+| 6c. Sfide tra Amici | 4-5h | 📋 Pianificato |
 | 7. Statistiche Avanzate | 2-3h | ✅ Completato |
 | 8. Achievement | 2-3h | ⏳ Todo |
 | 9. Shop | 3-4h | ⏳ Todo |
 | 10. Modalità Hard | 2-3h | ⏳ Todo |
 
-**Totale:** ~25+ ore lavoro
+**Totale:** ~30+ ore lavoro
 
 ---
 
