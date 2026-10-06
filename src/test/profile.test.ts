@@ -19,7 +19,7 @@ describe('getUserInfo - RPC client', () => {
 
   it('should return user data when RPC returns valid data', async () => {
     // Import after setting up the test
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     const mockUserData = {
       id: '123e4567-e89b-12d3-a456-426614174000',
@@ -47,7 +47,7 @@ describe('getUserInfo - RPC client', () => {
   });
 
   it('should return user data when RPC returns array with data', async () => {
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     const mockUserData = [{
       id: '123e4567-e89b-12d3-a456-426614174000',
@@ -71,7 +71,7 @@ describe('getUserInfo - RPC client', () => {
   });
 
   it('should return failure when RPC returns empty object', async () => {
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     mockRpc.mockResolvedValue({
       data: {},
@@ -86,7 +86,7 @@ describe('getUserInfo - RPC client', () => {
   });
 
   it('should return failure when RPC returns empty array', async () => {
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     mockRpc.mockResolvedValue({
       data: [],
@@ -101,7 +101,7 @@ describe('getUserInfo - RPC client', () => {
   });
 
   it('should return failure when RPC returns null', async () => {
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     mockRpc.mockResolvedValue({
       data: null,
@@ -116,7 +116,7 @@ describe('getUserInfo - RPC client', () => {
   });
 
   it('should handle null nickname and use firstName instead', async () => {
-    const { getUserInfo } = await import('../lib/rpc-client');
+    const { getUserInfo } = await import('../lib/api/profile');
 
     const mockUserData = {
       id: '123e4567-e89b-12d3-a456-426614174000',

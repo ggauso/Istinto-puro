@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import { createServer as createViteServer } from "vite";
 
 async function startServer() {
@@ -15,7 +16,13 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
+    const distDir = path.resolve(process.cwd(), "dist");
+    app.use(express.static(distDir));
+    // SPA fallback: any route not matched by a static asset (e.g. /sfida/:token)
+    // must still serve index.html so the client-side router can take over.
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distDir, "index.html"));
+    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {

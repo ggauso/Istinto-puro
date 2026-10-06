@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { checkEmailLocked, recordLoginAttempt, recordAuthAudit } from '../lib/rpc-client';
+import { checkEmailLocked, recordLoginAttempt } from '../lib/api/auth-security';
+import { recordAuthAudit } from '../lib/api/audit';
 import { LogIn, UserPlus, ArrowLeft, Mail, Lock, User, Calendar, Shield, Trophy, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -67,7 +68,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         });
 
         if (signUpError) throw signUpError;
-        
+
         // If email confirmation is required, inform the user
         if (data.user && data.session === null) {
           setSuccessMsg('Controlla la tua email per confermare la registrazione!');
@@ -79,7 +80,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin
         });
-        
+
         if (resetError) throw resetError;
         setSuccessMsg('Ti abbiamo inviato un link per il recupero della password. Controlla la tua email.');
       } else if (mode === 'update_password') {
@@ -91,7 +92,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           throw new Error('La password deve essere di almeno 6 caratteri.');
         }
 
-        const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => 
+        const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) =>
           setTimeout(() => reject(new Error('Timeout: il server non ha risposto.')), 10000)
         );
 
@@ -181,12 +182,12 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
 
   return (
     <div className="min-h-screen bg-[#121212] text-white flex flex-col items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-[#1E1E1E] rounded-2xl p-8 shadow-2xl border border-white/5"
       >
-        <button 
+        <button
           onClick={onBack}
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6"
         >
@@ -198,8 +199,8 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           {mode === 'login' ? 'Bentornato' : mode === 'register' ? 'Crea Account' : mode === 'forgot_password' ? 'Recupero Password' : 'Nuova Password'}
         </h2>
         <p className="text-gray-400 text-center mb-8">
-          {mode === 'login' ? 'Accedi per salvare i tuoi progressi' 
-            : mode === 'register' ? 'Unisciti alla community di Istinto Puro' 
+          {mode === 'login' ? 'Accedi per salvare i tuoi progressi'
+            : mode === 'register' ? 'Unisciti alla community di Istinto Puro'
             : mode === 'forgot_password' ? 'Inserisci la tua email per ricevere un link di recupero'
             : 'Scegli una nuova password per il tuo account'}
         </p>
@@ -224,9 +225,9 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
                   <label className="block text-sm font-medium text-gray-400 mb-1">Nome</label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                    <input 
-                      type="text" 
-                      required 
+                    <input
+                      type="text"
+                      required
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
@@ -238,9 +239,9 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
                   <label className="block text-sm font-medium text-gray-400 mb-1">Cognome</label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                    <input 
-                      type="text" 
-                      required 
+                    <input
+                      type="text"
+                      required
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
@@ -254,9 +255,9 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
                 <label className="block text-sm font-medium text-gray-400 mb-1">Data di Nascita</label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                  <input 
-                    type="date" 
-                    required 
+                  <input
+                    type="date"
+                    required
                     value={birthDate}
                     onChange={(e) => setBirthDate(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
@@ -268,8 +269,8 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
                 <label className="block text-sm font-medium text-gray-400 mb-1">Squadra Preferita</label>
                 <div className="relative">
                   <Trophy className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={favoriteTeam}
                     onChange={(e) => setFavoriteTeam(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
@@ -285,9 +286,9 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
               <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input 
-                  type="email" 
-                  required 
+                <input
+                  type="email"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#FFD700] transition-colors"
@@ -344,8 +345,8 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium text-gray-400">Password</label>
                 {mode === 'login' && (
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => {
                         setMode('forgot_password');
                         setError(null);
@@ -359,7 +360,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input 
+                <input
                   type={showPassword ? 'text' : 'password'}
                   required={mode !== 'forgot_password'}
                   value={password}
@@ -378,9 +379,9 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           {mode === 'register' && (
             <div className="flex items-start gap-3 mt-4">
               <div className="flex items-center h-5">
-                <input 
-                  id="privacy" 
-                  type="checkbox" 
+                <input
+                  id="privacy"
+                  type="checkbox"
                   required
                   checked={privacyAccepted}
                   onChange={(e) => setPrivacyAccepted(e.target.checked)}
@@ -393,8 +394,8 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
             </div>
           )}
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading || updateSuccess}
             className={`w-full font-bold py-3 px-4 rounded-xl transition-all mt-6 flex items-center justify-center gap-2 disabled:cursor-not-allowed ${
               updateSuccess
@@ -417,7 +418,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           <div className="h-px bg-white/10 flex-1"></div>
         </div>
 
-        <button 
+        <button
           onClick={handleGoogleLogin}
           type="button"
           className="w-full mt-6 bg-white text-black font-bold py-3 px-4 rounded-xl hover:bg-gray-100 transition-colors flex items-center justify-center gap-3"
@@ -433,7 +434,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
 
         <p className="text-center mt-8 text-gray-400 text-sm">
           {mode === 'login' ? 'Non hai un account? ' : mode === 'register' ? 'Hai già un account? ' : 'Ricordi la password? '}
-          <button 
+          <button
             onClick={() => {
                 setMode(mode === 'login' ? 'register' : 'login');
                 setError(null);

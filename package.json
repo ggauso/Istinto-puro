@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "start": "node server.ts",
     "import-data": "tsx scripts/import-data.ts",
+    "export-seed": "tsx scripts/export-local-seed.ts",
     "fix-leagues": "tsx scripts/fix-leagues.ts",
     "test": "vitest run",
     "test:watch": "vitest",

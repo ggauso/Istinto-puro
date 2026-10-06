@@ -1,1 +1,11 @@
 node_modules
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Dati Postgres dello stack Docker locale (persistiti su disco, non da versionare)
+docker/volumes/db/data
+
+# Seed generato da scripts/export-local-seed.ts (snapshot dei tuoi dati, non codice)
+docker/volumes/db/seed

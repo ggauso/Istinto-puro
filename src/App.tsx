@@ -13,16 +13,59 @@ import { AuthScreen } from './components/AuthScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { ChallengeScreen } from './components/ChallengeScreen';
-import { getPendingFriendChallenges, acceptFriendChallenge } from './lib/rpc-client';
+import { TournamentsScreen } from './components/TournamentsScreen';
+import { getPendingFriendChallenges, acceptFriendChallenge } from './lib/api/friend-challenges';
+import { startDueTournaments } from './lib/api/tournaments';
+import { useTournamentMatch } from './components/tournament/useTournamentMatch';
+import type { AchievementCode } from './types/game';
+import { ACHIEVEMENT_LABELS } from './types/game';
+import { Award, X } from 'lucide-react';
+
+// Chiave sessionStorage per i toast achievement in attesa di essere
+// mostrati/chiusi esplicitamente — sopravvive al redirect a pagina intera
+// (`window.location.href = '/'`) che GameScreen fa a fine partita, che
+// altrimenti cancellerebbe il toast (e lo stato Zustand in memoria) prima
+// che l'utente riesca a leggerlo. Vedi useEffect dedicato più sotto.
+const PENDING_ACHIEVEMENT_TOASTS_KEY = 'pendingAchievementToasts';
+
+function readPendingAchievementToasts(): AchievementCode[] {
+  try {
+    const raw = sessionStorage.getItem(PENDING_ACHIEVEMENT_TOASTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingAchievementToasts(codes: AchievementCode[]): void {
+  try {
+    if (codes.length === 0) sessionStorage.removeItem(PENDING_ACHIEVEMENT_TOASTS_KEY);
+    else sessionStorage.setItem(PENDING_ACHIEVEMENT_TOASTS_KEY, JSON.stringify(codes));
+  } catch {
+    // sessionStorage non disponibile: il toast resta comunque visibile per
+    // questa sessione in memoria, solo non sopravvive a un reload.
+  }
+}
 
 export default function App() {
-  const { status } = useGameStore();
+  const { status, newlyUnlockedAchievements } = useGameStore();
   const { initialize, loading } = useAuthStore();
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge' | 'tournaments'>('home');
+  const [profileInitialTab, setProfileInitialTab] = useState<'info' | 'stats' | 'friends' | 'achievements'>('info');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [currentChallengeId, setCurrentChallengeId] = useState<string | null>(null);
   const [userLeftChallenge, setUserLeftChallenge] = useState(false);
+
+  // Toast achievement (Milestone 8) — stato separato dal toastWithAction
+  // generico sotto: quello è un'unica "slot" condivisa riusata da polling
+  // sfide/tornei, e un evento di quel tipo poco dopo uno sblocco achievement
+  // lo avrebbe sovrascritto/nascosto. Lazy init legge subito eventuali
+  // sblocchi lasciati in sessionStorage da PRIMA del redirect a pagina
+  // intera di fine partita (vedi commento sopra su PENDING_ACHIEVEMENT_TOASTS_KEY).
+  const [pendingAchievementToasts, setPendingAchievementToasts] = useState<AchievementCode[]>(
+    () => readPendingAchievementToasts()
+  );
 
   // Global toast state
   const [toastWithAction, setToastWithAction] = useState<{
@@ -121,6 +164,21 @@ export default function App() {
     return () => clearInterval(pollInterval);
   }, [user]);
 
+  // Avvia i tornei schedulati la cui data/ora è arrivata. Nessun job
+  // server-side (no pg_cron): un client loggato qualsiasi può far scattare
+  // l'avvio chiamando questa RPC periodicamente, è idempotente.
+  useEffect(() => {
+    if (!user) return;
+
+    const pollDueTournaments = () => {
+      startDueTournaments().catch((err) => console.error('Error starting due tournaments:', err));
+    };
+
+    pollDueTournaments();
+    const interval = setInterval(pollDueTournaments, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   // Auto-clear toast after 6 seconds
   useEffect(() => {
     if (toastWithAction) {
@@ -128,6 +186,30 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toastWithAction]);
+
+  // Achievement appena sbloccati (Milestone 8), popolati dallo store di
+  // gioco sia a fine partita (check server-truth) sia durante il round
+  // (eventi momentanei "speed"/"perfect"/...) — vedi lifecycleSlice.ts e
+  // gameplaySlice.ts. Li spostiamo subito in pendingAchievementToasts
+  // (persistito in sessionStorage) e svuotiamo lo store, così anche se il
+  // redirect a pagina intera di fine partita scatta un attimo dopo, il
+  // toast riappare intatto sulla home invece di sparire silenziosamente.
+  useEffect(() => {
+    if (newlyUnlockedAchievements.length === 0) return;
+
+    setPendingAchievementToasts((prev) => {
+      const merged = [...prev, ...newlyUnlockedAchievements];
+      writePendingAchievementToasts(merged);
+      return merged;
+    });
+
+    useGameStore.getState().clearNewlyUnlockedAchievements();
+  }, [newlyUnlockedAchievements]);
+
+  const dismissAchievementToasts = () => {
+    setPendingAchievementToasts([]);
+    writePendingAchievementToasts([]);
+  };
 
   useEffect(() => {
     initialize();
@@ -154,6 +236,40 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, [initialize]);
+
+  // Un match di torneo è già stato deciso dal bracket (nessun "accetta/rifiuta"):
+  // appena il polling lo rileva pronto, naviga automaticamente alla partita.
+  // NOTE: definita qui (prima degli "early return" sotto) perché usata dall'hook
+  // useTournamentMatch subito dopo, che va chiamato incondizionatamente ad ogni
+  // render (regole degli Hooks di React).
+  const handleJoinTournamentMatch = (
+    roomId: string,
+    opponentUserId: string,
+    opponentNickname: string,
+    opponentTier: string,
+    isHost: boolean,
+    tournamentMatchId: string,
+    leagueId?: number,
+    difficulty?: number
+  ) => {
+    const gameStore = useGameStore.getState();
+    gameStore.setGameMode('pvp');
+    useGameStore.setState({
+      status: 'searching',
+      selectedLeague: leagueId || null,
+      selectedDifficulty: difficulty || 1
+    });
+
+    gameStore.joinGameRoom(roomId, isHost, opponentUserId, opponentNickname);
+    useGameStore.setState({
+      opponentInfo: { nickname: opponentNickname, tier: opponentTier },
+      currentTournamentMatchId: tournamentMatchId
+    });
+    setCurrentScreen('game');
+  };
+
+  // Polling globale (ovunque si trovi l'utente) per i match di torneo pronti
+  useTournamentMatch(handleJoinTournamentMatch);
 
   if (loading) {
     return (
@@ -184,7 +300,8 @@ export default function App() {
     isHost: boolean = false,
     challengeId?: string,
     leagueId?: number,
-    difficulty?: number
+    difficulty?: number,
+    isFriendChallenge?: boolean
   ) => {
     // Get game store functions
     const gameStore = useGameStore.getState();
@@ -199,6 +316,12 @@ export default function App() {
       selectedDifficulty: difficulty || 1
     });
 
+    // Sfide-link e sfide-amico scrivono in campi distinti dello store
+    // (completate da due RPC diverse a fine partita, vedi GameScreen.tsx)
+    const challengeIdFields = isFriendChallenge
+      ? { currentFriendChallengeId: challengeId || null }
+      : { currentChallengeId: challengeId || null };
+
     if (isHost) {
       // Host (challenge creator) joins immediately - they'll wait for challenger
       gameStore.joinGameRoom(roomId, isHost, opponentUserId, opponentNickname);
@@ -209,7 +332,7 @@ export default function App() {
           nickname: opponentNickname,
           tier: opponentTier
         },
-        currentChallengeId: challengeId || null
+        ...challengeIdFields
       });
 
       // Navigate to game screen
@@ -226,7 +349,7 @@ export default function App() {
             nickname: opponentNickname,
             tier: opponentTier
           },
-          currentChallengeId: challengeId || null
+          ...challengeIdFields
         });
 
         // Navigate to game screen
@@ -241,7 +364,9 @@ export default function App() {
         <ChallengeScreen
           token={challengeToken}
           onBack={() => {
-            window.location.href = '/';
+            // Use history API to change URL without reload, then navigate via React state
+            window.history.pushState({}, '', '/');
+            setCurrentScreen('home');
           }}
           onAcceptChallenge={handleAcceptChallenge}
         />
@@ -257,14 +382,11 @@ export default function App() {
       {currentScreen === 'profile' && (
         <ProfileScreen
           onBack={() => setCurrentScreen('home')}
-          onChallengeFriend={(friendId, friendName, friendTier) => {
-            // Challenge is created in ProfileScreen, modal shows the link
-            // This callback is for potential future use
-            console.log('Challenge friend:', friendId, friendName, friendTier);
-          }}
+          initialTab={profileInitialTab}
         />
       )}
       {currentScreen === 'leaderboard' && <LeaderboardScreen onBack={() => setCurrentScreen('home')} />}
+      {currentScreen === 'tournaments' && <TournamentsScreen onBack={() => setCurrentScreen('home')} />}
       {currentScreen === 'home' && (
         <HomeScreen
           onNavigateToAuth={() => {
@@ -277,6 +399,7 @@ export default function App() {
             sessionStorage.removeItem('userLeftChallenge');
             sessionStorage.removeItem('lastChallengeRoomId');
             setUserLeftChallenge(false);
+            setProfileInitialTab('info');
             setCurrentScreen('profile');
           }}
           onNavigateToLeaderboard={() => {
@@ -285,7 +408,55 @@ export default function App() {
             setUserLeftChallenge(false);
             setCurrentScreen('leaderboard');
           }}
+          onNavigateToTournaments={() => {
+            sessionStorage.removeItem('userLeftChallenge');
+            sessionStorage.removeItem('lastChallengeRoomId');
+            setUserLeftChallenge(false);
+            setCurrentScreen('tournaments');
+          }}
         />
+      )}
+
+      {/* Toast Achievement (Milestone 8) — chiusura solo esplicita (nessun
+          auto-dismiss): a differenza del toast generico sotto, questo
+          sopravvive al redirect di fine partita (vedi sessionStorage sopra)
+          e l'utente deve vederlo e chiuderlo di proposito, non sparire da
+          solo mentre è ancora sulla schermata di vittoria/sconfitta. */}
+      {pendingAchievementToasts.length > 0 && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="px-5 py-4 rounded-xl shadow-2xl flex items-center gap-4 min-w-[320px] max-w-md bg-gradient-to-r from-yellow-600 to-amber-600 border border-yellow-400/40 animate-slide-up">
+            <Award className="w-8 h-8 text-white flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-white font-bold text-sm">
+                {pendingAchievementToasts.length === 1
+                  ? `Achievement sbloccato: ${ACHIEVEMENT_LABELS[pendingAchievementToasts[0]]}!`
+                  : `${pendingAchievementToasts.length} achievement sbloccati!`}
+              </div>
+              {pendingAchievementToasts.length > 1 && (
+                <div className="text-yellow-100 text-xs mt-0.5">
+                  {pendingAchievementToasts.map((code) => ACHIEVEMENT_LABELS[code]).join(', ')}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setProfileInitialTab('achievements');
+                setCurrentScreen('profile');
+                dismissAchievementToasts();
+              }}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold text-white transition-colors flex-shrink-0"
+            >
+              I miei achievement
+            </button>
+            <button
+              onClick={dismissAchievementToasts}
+              aria-label="Chiudi"
+              className="text-white/70 hover:text-white transition-colors flex-shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Global Toast Notification */}

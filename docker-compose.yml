@@ -1,0 +1,319 @@
+# Istinto Puro - stack locale (Supabase self-hosted, ridotto ai soli servizi usati dall'app)
+#
+# Basato sul docker-compose.yml ufficiale di self-hosting Supabase
+# (supabase/supabase, cartella docker/, commit 31b6368049a1 del 2025-10-06),
+# con le seguenti rimozioni rispetto all'originale perché non usati da questa app:
+#   - storage, imgproxy      (l'app non usa Supabase Storage)
+#   - functions              (nessuna Edge Function usata)
+#   - analytics (logflare)   (dashboard di log, non necessaria in locale)
+#   - vector                 (log shipper per analytics)
+#   - supavisor              (connection pooler Postgres, non usato: l'app parla solo via REST/Auth)
+# Aggiunte rispetto all'originale:
+#   - mailpit                (cattura in locale le email di conferma/reset password)
+#   - app                    (il frontend/server di questo progetto)
+#
+# Uso:
+#   docker compose up -d
+#   docker compose down          # ferma i container, mantiene i dati
+#   docker compose down -v       # ferma e AZZERA il database (utile se cambi le SQL di init)
+
+name: istinto-puro
+
+services:
+
+  db:
+    container_name: istintopuro-db
+    image: supabase/postgres:15.8.1.060
+    restart: unless-stopped
+    volumes:
+      # NOTA: montiamo i singoli file (non l'intera cartella) perché l'immagine
+      # supabase/postgres include GIA' propri script in queste stesse cartelle
+      # (es. quelli che creano i ruoli base authenticator/supabase_auth_admin/...).
+      # Un mount di cartella li nasconderebbe interamente.
+      - ./docker/volumes/db/init-scripts/99-jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - ./docker/volumes/db/init-scripts/99-roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./docker/volumes/db/migrations/99-realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./docker/volumes/db/migrations/998_auth_jwt_helper.sql:/docker-entrypoint-initdb.d/migrations/998_auth_jwt_helper.sql:Z
+      - ./docker/volumes/db/migrations/999_app_01_extensions_and_game_data.sql:/docker-entrypoint-initdb.d/migrations/999_app_01_extensions_and_game_data.sql:Z
+      - ./docker/volumes/db/migrations/999_app_02_profiles_and_auth.sql:/docker-entrypoint-initdb.d/migrations/999_app_02_profiles_and_auth.sql:Z
+      - ./docker/volumes/db/migrations/999_app_03_matches_and_leaderboard.sql:/docker-entrypoint-initdb.d/migrations/999_app_03_matches_and_leaderboard.sql:Z
+      - ./docker/volumes/db/migrations/999_app_04_login_rate_limit.sql:/docker-entrypoint-initdb.d/migrations/999_app_04_login_rate_limit.sql:Z
+      - ./docker/volumes/db/migrations/999_app_05_audit_log.sql:/docker-entrypoint-initdb.d/migrations/999_app_05_audit_log.sql:Z
+      - ./docker/volumes/db/migrations/999_app_06_data_retention.sql:/docker-entrypoint-initdb.d/migrations/999_app_06_data_retention.sql:Z
+      - ./docker/volumes/db/migrations/999_app_07_challenges.sql:/docker-entrypoint-initdb.d/migrations/999_app_07_challenges.sql:Z
+      - ./docker/volumes/db/migrations/999_app_08_friends.sql:/docker-entrypoint-initdb.d/migrations/999_app_08_friends.sql:Z
+      - ./docker/volumes/db/migrations/999_app_09_friend_challenges.sql:/docker-entrypoint-initdb.d/migrations/999_app_09_friend_challenges.sql:Z
+      - ./docker/volumes/db/migrations/999_app_10_advanced_stats.sql:/docker-entrypoint-initdb.d/migrations/999_app_10_advanced_stats.sql:Z
+      - ./docker/volumes/db/migrations/999_app_11_tournaments.sql:/docker-entrypoint-initdb.d/migrations/999_app_11_tournaments.sql:Z
+      # Volume Docker nativo (non bind mount) - vive nel filesystem della VM
+      # colima, non sul Mac via virtiofs. Necessario: il mount virtiofs sui
+      # file nuovi sotto un bind mount ha causato più volte PANIC di Postgres
+      # (vedi DOCKER.md, "Bug noto: Realtime e colima/virtiofs"). Dati
+      # migrati una tantum da ./docker/volumes/db/data (rimasta come backup).
+      - db-data:/var/lib/postgresql/data:Z
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: ${POSTGRES_PORT}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: ${JWT_EXPIRY}
+    command:
+      [
+        "postgres",
+        "-c", "config_file=/etc/postgresql/postgresql.conf",
+        "-c", "log_min_messages=fatal"
+      ]
+
+  auth:
+    container_name: istintopuro-auth
+    image: supabase/gotrue:v2.177.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP}
+
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS}
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM}
+
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME}
+      GOTRUE_MAILER_URLPATHS_INVITE: ${MAILER_URLPATHS_INVITE}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${MAILER_URLPATHS_CONFIRMATION}
+      GOTRUE_MAILER_URLPATHS_RECOVERY: ${MAILER_URLPATHS_RECOVERY}
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
+
+      GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
+      GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
+
+      # Google OAuth: disabilitato di default in locale. Per abilitarlo, valorizza
+      # GOOGLE_ENABLED/GOOGLE_CLIENT_ID/GOOGLE_SECRET nel tuo .env e scommenta:
+      # GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOOGLE_ENABLED}
+      # GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_SECRET}
+      # GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${API_EXTERNAL_URL}/callback
+
+  rest:
+    container_name: istintopuro-rest
+    image: postgrest/postgrest:v12.2.12
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
+    command: ["postgrest"]
+
+  realtime:
+    # Nome container non convenzionale ma corretto: realtime deriva il tenant id dal subdomain
+    container_name: realtime-dev.istintopuro-realtime
+    # supabase/realtime:latest richiede il client @supabase/supabase-js
+    # recente (manda sempre frame WebSocket binari - versioni precedenti del
+    # server crashano su Phoenix.Socket.V2.JSONSerializer.decode_binary).
+    # Prima della migrazione di db a volume Docker nativo (vedi sopra),
+    # questa immagine poteva mandare in PANIC Postgres creando il suo slot di
+    # replica logica su virtiofs - vedi DOCKER.md. Ora che i dati sono su un
+    # volume Docker nativo (non più bind mount), quel problema specifico non
+    # si applica più.
+    image: supabase/realtime:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD", "curl", "-sSfL", "--head", "-o", "/dev/null",
+          "-H", "Authorization: Bearer ${ANON_KEY}",
+          "http://localhost:4000/api/tenants/realtime-dev/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      PORT: 4000
+      DB_HOST: ${POSTGRES_HOST}
+      DB_PORT: ${POSTGRES_PORT}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: true
+      # RUN_JANITOR a true su un singolo nodo causava la terminazione periodica
+      # (ogni 1-2 minuti) dell'unico tenant "realtime-dev", interrompendo le
+      # connessioni WebSocket attive (es. durante una sfida in corso) - vedi log
+      # "Tenant realtime-dev has been terminated: :shutdown" ripetuti.
+      RUN_JANITOR: false
+
+  meta:
+    container_name: istintopuro-meta
+    image: supabase/postgres-meta:v0.91.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: ${POSTGRES_HOST}
+      PG_META_DB_PORT: ${POSTGRES_PORT}
+      PG_META_DB_NAME: ${POSTGRES_DB}
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+
+  studio:
+    container_name: istintopuro-studio
+    image: supabase/studio:2025.06.30-sha-6f5982d
+    restart: unless-stopped
+    depends_on:
+      meta:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD", "node", "-e",
+          "fetch('http://studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
+        ]
+      timeout: 10s
+      interval: 5s
+      retries: 3
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_META_CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+
+      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION}
+      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT}
+
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+
+      # Analytics/log viewer di Studio disattivato: non gira il servizio "analytics" in questo stack
+      NEXT_PUBLIC_ENABLE_LOGS: "false"
+
+  kong:
+    container_name: istintopuro-kong
+    image: kong:2.8.1
+    restart: unless-stopped
+    ports:
+      - "${KONG_HTTP_PORT}:8000/tcp"
+      - "${KONG_HTTPS_PORT}:8443/tcp"
+    volumes:
+      - ./docker/volumes/api/kong.yml:/home/kong/temp.yml:ro,z
+    depends_on:
+      auth:
+        condition: service_started
+      rest:
+        condition: service_started
+      realtime:
+        condition: service_started
+      studio:
+        condition: service_started
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+
+  mailpit:
+    container_name: istintopuro-mailpit
+    image: axllent/mailpit:v1.20
+    restart: unless-stopped
+    ports:
+      # UI web per leggere le email catturate (conferma registrazione, reset password)
+      - "8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  app:
+    container_name: istintopuro-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${APP_TARGET:-dev}
+    restart: unless-stopped
+    depends_on:
+      kong:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${APP_NODE_ENV:-development}
+      # Consumate dal BROWSER (client-side): devono puntare a un host raggiungibile
+      # dal browser dell'utente, MAI al nome interno del servizio Docker "kong".
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+      # Consumate lato server/script (scripts/import-data.ts, ecc.)
+      SUPABASE_URL: ${VITE_SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  db-config:
+  db-data:

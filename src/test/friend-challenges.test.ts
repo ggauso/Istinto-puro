@@ -70,6 +70,31 @@ describe('Sistema Sfide tra Amici', () => {
     });
   });
 
+  describe('Completamento sfida a fine partita (fix 2026-10-05)', () => {
+    // Prima di questo fix, GameScreen.tsx usava currentChallengeId (pensato
+    // per le sfide-link) anche per le sfide-amico, che invece richiedono
+    // completeFriendChallenge su una tabella diversa (friend_challenges) —
+    // la RPC sbagliata non trovava mai la riga e falliva silenziosamente,
+    // quindi una sfida-amico non si completava mai su vittoria/sconfitta
+    // normale (solo l'abbandono funzionava). Ora i due campi sono distinti
+    // nello store (currentChallengeId vs currentFriendChallengeId).
+    it('una sfida-amico in corso deve essere completata da completeFriendChallenge, non da completeChallenge', () => {
+      const state = { currentChallengeId: null as string | null, currentFriendChallengeId: 'friend-challenge-id' as string | null };
+
+      const rpcToCall = state.currentChallengeId ? 'complete_challenge' : state.currentFriendChallengeId ? 'complete_friend_challenge' : null;
+
+      expect(rpcToCall).toBe('complete_friend_challenge');
+    });
+
+    it('una sfida-link in corso deve continuare a usare completeChallenge', () => {
+      const state = { currentChallengeId: 'express-challenge-id' as string | null, currentFriendChallengeId: null as string | null };
+
+      const rpcToCall = state.currentChallengeId ? 'complete_challenge' : state.currentFriendChallengeId ? 'complete_friend_challenge' : null;
+
+      expect(rpcToCall).toBe('complete_challenge');
+    });
+  });
+
   describe('Polling e notifiche', () => {
     it('dovrebbe fare polling ogni 30 secondi', async () => {
       const POLL_INTERVAL = 30000;

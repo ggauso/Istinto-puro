@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from './lib/supabase';
-import { getCurrentProfile as fetchProfileFromDb, updateProfile as updateProfileDb } from './lib/rpc-client';
+import { getCurrentProfile as fetchProfileFromDb, updateProfile as updateProfileDb } from './lib/api/profile';
 import { User } from '@supabase/supabase-js';
 
 export interface Profile {
@@ -22,6 +22,10 @@ export interface Profile {
   longest_win_streak?: number;
   longest_loss_streak?: number;
   best_score?: number;
+  // Milestone 9 (Shop): valuta guadagnata vincendo partite/achievement,
+  // colore tema profilo attivo (hex, NULL se nessun tema attivato).
+  coins?: number;
+  theme_color?: string | null;
 }
 
 interface AuthState {

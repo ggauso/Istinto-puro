@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../store';
 import { useAuthStore } from '../authStore';
-import { createChallenge, getMyActiveChallenge } from '../lib/rpc-client';
+import { createChallenge, getMyActiveChallenge } from '../lib/api/challenges';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Play, Loader2, Globe, Users, Bot, User, Send, X, ExternalLink } from 'lucide-react';
+import { Trophy, Play, Loader2, Globe, Users, Bot, User, Send, X, ExternalLink, Swords } from 'lucide-react';
 
 const LEAGUES = [
   { id: null, name: 'Tutti i Campionati' },
@@ -18,15 +18,17 @@ const DIFFICULTIES = [
   { id: 1, name: 'Facile' },
   { id: 2, name: 'Medio' },
   { id: 3, name: 'Difficile' },
+  { id: 4, name: 'Hard', hard: true },
 ];
 
 interface HomeScreenProps {
   onNavigateToAuth: () => void;
   onNavigateToProfile: () => void;
   onNavigateToLeaderboard: () => void;
+  onNavigateToTournaments: () => void;
 }
 
-export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateToLeaderboard }: HomeScreenProps) {
+export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateToLeaderboard, onNavigateToTournaments }: HomeScreenProps) {
   const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, errorMsg, setErrorMsg } = useGameStore();
   const { user, profile } = useAuthStore();
 
@@ -124,6 +126,16 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
           >
             <Trophy className="w-4 h-4 text-[#FFD700]" />
             <span className="font-medium text-sm">Classifica</span>
+          </button>
+        )}
+        {user && (
+          <button
+            onClick={onNavigateToTournaments}
+            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
+            title="Tornei"
+          >
+            <Swords className="w-4 h-4 text-purple-400" />
+            <span className="font-medium text-sm">Tornei</span>
           </button>
         )}
         {user ? (
@@ -255,14 +267,23 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
                     onClick={() => setSelectedDifficulty(diff.id)}
                     className={`flex-1 py-3 rounded-xl font-bold transition-colors border-2 ${
                       selectedDifficulty === diff.id
-                        ? 'bg-[#FFD700] text-black border-[#FFD700]'
-                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
+                        ? diff.hard
+                          ? 'bg-red-600 text-white border-red-600'
+                          : 'bg-[#FFD700] text-black border-[#FFD700]'
+                        : diff.hard
+                          ? 'bg-zinc-900 text-red-500 border-red-900/60 hover:border-red-600 hover:text-red-400'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
                     }`}
                   >
                     {diff.name}
                   </button>
                 ))}
               </div>
+              {selectedDifficulty === 4 && (
+                <p className="text-red-500 text-xs text-center font-medium">
+                  ⚠️ Timer 5s, penalità -50 punti per errore, serve nome e cognome completi
+                </p>
+              )}
             </div>
 
             <motion.button
@@ -315,12 +336,12 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
               <div className="flex gap-2 mb-6">
                 <input
                   type="text"
-                  value={`https://istintopuro.com/sfida/${challengeToken}`}
+                  value={`${window.location.origin}/sfida/${challengeToken}`}
                   readOnly
                   className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
                 />
                 <button
-                  onClick={() => navigator.clipboard.writeText(`https://istintopuro.com/sfida/${challengeToken}`)}
+                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}/sfida/${challengeToken}`)}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold transition-colors"
                 >
                   Copia

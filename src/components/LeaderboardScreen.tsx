@@ -5,13 +5,13 @@
  */
 
 import { useState, useEffect } from 'react'
-import { getLeaderboard, getWeeklyLeaderboard, getMonthlyLeaderboard, getUserRank } from '../lib/rpc-client'
+import { getLeaderboard, getWeeklyLeaderboard, getMonthlyLeaderboard, getFriendsLeaderboard, getHardModeLeaderboard, getUserRank } from '../lib/api/leaderboard'
 import { TierBadge } from './TierBadge'
 import { Tier, formatNumber, sortLeaderboard } from '../lib/game-utils'
 import { motion } from 'motion/react'
-import { Trophy, Medal, Crown, ArrowLeft, ChevronDown, RefreshCw } from 'lucide-react'
+import { Trophy, Medal, Crown, ArrowLeft, ChevronDown, RefreshCw, Users, Flame } from 'lucide-react'
 
-type LeaderboardType = 'all_time' | 'weekly' | 'monthly'
+type LeaderboardType = 'all_time' | 'weekly' | 'monthly' | 'friends' | 'hard'
 
 interface LeaderboardScreenProps {
   onBack: () => void;
@@ -43,6 +43,12 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
           break
         case 'monthly':
           result = await getMonthlyLeaderboard(50)
+          break
+        case 'friends':
+          result = await getFriendsLeaderboard(50)
+          break
+        case 'hard':
+          result = await getHardModeLeaderboard(50)
           break
         default:
           result = await getLeaderboard(50, null)
@@ -127,21 +133,24 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
       {/* Content */}
       <div className="max-w-lg mx-auto px-4 py-4">
         {/* Time Filter */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-wrap">
           {[
             { id: 'all_time', label: 'Tutti' },
             { id: 'weekly', label: 'Settimana' },
             { id: 'monthly', label: 'Mese' },
+            { id: 'friends', label: 'Amici' },
+            { id: 'hard', label: 'Hard', hard: true },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setLeaderboardType(tab.id as LeaderboardType)}
-              className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${
+              className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1 ${
                 leaderboardType === tab.id
-                  ? 'bg-[#FFD700] text-black'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                  ? tab.hard ? 'bg-red-600 text-white' : 'bg-[#FFD700] text-black'
+                  : tab.hard ? 'bg-zinc-900 text-red-500 hover:text-red-400' : 'bg-zinc-900 text-zinc-400 hover:text-white'
               }`}
             >
+              {tab.hard && <Flame className="w-3.5 h-3.5" />}
               {tab.label}
             </button>
           ))}
@@ -163,9 +172,25 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
           </div>
         ) : entries.length === 0 ? (
           <div className="text-center py-20 text-zinc-500">
-            <Trophy className="w-16 h-16 mx-auto mb-4 opacity-30" />
-            <p>Nessun utente in classifica</p>
-            <p className="text-sm mt-2">Completa delle partite per entrare!</p>
+            {leaderboardType === 'friends' ? (
+              <>
+                <Users className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p>Nessun amico in classifica</p>
+                <p className="text-sm mt-2">Aggiungi amici dal tuo profilo per vederli qui!</p>
+              </>
+            ) : leaderboardType === 'hard' ? (
+              <>
+                <Flame className="w-16 h-16 mx-auto mb-4 opacity-30 text-red-500" />
+                <p>Nessuno in classifica hard</p>
+                <p className="text-sm mt-2">Gioca in modalità Hard per entrare!</p>
+              </>
+            ) : (
+              <>
+                <Trophy className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p>Nessun utente in classifica</p>
+                <p className="text-sm mt-2">Completa delle partite per entrare!</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

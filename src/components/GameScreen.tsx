@@ -1,19 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
 import { useAuthStore } from '../authStore';
-import { completeChallenge } from '../lib/rpc-client';
+import { completeChallenge } from '../lib/api/challenges';
+import { completeFriendChallenge } from '../lib/api/friend-challenges';
+import { completeTournamentMatch } from '../lib/api/tournaments';
 import { CircularTimer } from './CircularTimer';
 import { TierBadge } from './TierBadge';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Flag, User, Bot } from 'lucide-react';
+import { Home, Flag, User, Bot, Flame } from 'lucide-react';
 
 export function GameScreen() {
-  const { 
-    match, score, timeLeft, status, validatePlayer, tickTimer, 
+  const {
+    match, score, timeLeft, status, validatePlayer, tickTimer,
     fetchMatchAndBroadcast, resetGame, findMatch, gameMode, correctAnswer, correctAnswerSeasons,
     round, playerRoundsWon, opponentRoundsWon, streak, lastScoreAdded, lastRarity, lastCombo, isHost,
-    abandonMatch
+    abandonMatch, selectedDifficulty
   } = useGameStore();
+  const isHardMode = selectedDifficulty === 4;
 
   const renderSeasons = (seasons: number[] | undefined) => {
     if (!seasons) return 'N/D';
@@ -59,11 +62,36 @@ export function GameScreen() {
   useEffect(() => {
     const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
     if (isGameOver) {
-      // Mark challenge as completed when game ends
-      const { currentChallengeId, gameMode: gm } = useGameStore.getState();
+      // Completa sfida-link / sfida-amico / match-torneo quando la partita finisce
+      // (tre campi distinti nello store: una partita PvP può essere al più una
+      // di queste tre cose, mai scritti insieme)
+      const {
+        currentChallengeId, currentFriendChallengeId, currentTournamentMatchId,
+        gameMode: gm, isHost: host, playerRoundsWon: pRounds, opponentRoundsWon: oRounds, match: m
+      } = useGameStore.getState();
+      const { user } = useAuthStore.getState();
+      const isWin = status === 'match_won';
+
       if (currentChallengeId && gm === 'pvp') {
         completeChallenge(currentChallengeId).catch(console.error);
+      } else if (currentFriendChallengeId && gm === 'pvp' && user && m?.opponent_id) {
+        const winnerId = isWin ? user.id : m.opponent_id;
+        const creatorScore = host ? pRounds : oRounds;
+        const opponentScore = host ? oRounds : pRounds;
+        completeFriendChallenge(currentFriendChallengeId, winnerId, creatorScore, opponentScore).catch(console.error);
+      } else if (currentTournamentMatchId && gm === 'pvp' && user && m?.opponent_id) {
+        const winnerId = isWin ? user.id : m.opponent_id;
+        const player1Score = host ? pRounds : oRounds;
+        const player2Score = host ? oRounds : pRounds;
+        completeTournamentMatch(currentTournamentMatchId, winnerId, player1Score, player2Score).catch(console.error);
       }
+
+      // Bug pre-esistente trovato durante Milestone 8 (Achievement): questa
+      // funzione non era mai chiamata da nessun componente, quindi
+      // matches_history non si popolava mai durante il gioco reale (le
+      // statistiche avanzate di Milestone 7/12, che leggono da lì, erano
+      // sempre vuote in pratica). Corretto qui.
+      useGameStore.getState().saveMatchResultToDb(isWin, useGameStore.getState().score).catch(console.error);
 
       const timer = setTimeout(() => {
         resetGame();
@@ -106,7 +134,7 @@ export function GameScreen() {
     );
   }
 
-  const totalTime = gameMode === 'ai' ? 15 : 10;
+  const totalTime = isHardMode ? 5 : (gameMode === 'ai' ? 15 : 10);
   const isGameOver = status === 'match_won' || status === 'match_lost' || (status === 'lost' && gameMode === 'ai');
 
   return (
@@ -134,7 +162,16 @@ export function GameScreen() {
             </button>
           ) : (
             <button
-              onClick={resetGame}
+              onClick={() => {
+                // Redirect a pagina intera, non solo resetGame(): se la
+                // partita è stata raggiunta da /sfida/<token> (sfida
+                // link/amico) o da un match di torneo, l'URL resta quello
+                // finché non si ricarica la pagina — altrimenti App.tsx
+                // ricade nel ramo `currentScreen === 'challenge'` e ricarica
+                // la sfida ormai conclusa invece di andare alla Home.
+                resetGame();
+                window.location.href = '/';
+              }}
               className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors bg-black/50 px-3 py-2 rounded-full backdrop-blur-sm border border-white/10"
             >
               <Home className="w-4 h-4" />
@@ -179,6 +216,12 @@ export function GameScreen() {
       </div>
 
       <div className="flex flex-col items-center space-y-8 w-full max-w-md">
+        {isHardMode && (
+          <div className="flex items-center gap-1.5 bg-red-600/20 border border-red-500/50 text-red-400 font-bold text-xs tracking-widest uppercase px-3 py-1 rounded-full">
+            <Flame className="w-3.5 h-3.5" />
+            Hard
+          </div>
+        )}
         <CircularTimer timeLeft={timeLeft} totalTime={totalTime} />
 
         <div className="flex items-center justify-between w-full px-4">
@@ -391,13 +434,14 @@ export function GameScreen() {
               </p>
               <div className="flex flex-col gap-3">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setShowAbandonModal(false);
-                    abandonMatch();
-                    // Redirect to home after abandon
-                    setTimeout(() => {
-                      window.location.href = '/';
-                    }, 1000);
+                    // Attende che abandonMatch() abbia inviato il broadcast
+                    // all'avversario prima di navigare via: farlo subito
+                    // smonterebbe la pagina (e la connessione realtime) senza
+                    // garanzia che il messaggio sia già partito.
+                    await abandonMatch();
+                    window.location.href = '/';
                   }}
                   className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors"
                 >

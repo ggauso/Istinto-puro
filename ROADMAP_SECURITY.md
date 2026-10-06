@@ -14,21 +14,29 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
 **Tempo stimato:** 2-3 giorni
 **Priorità:** ALTISSIMA - Blocca deployment production
 
-### Task 1.1: Fixare le funzioni RPC insicure
-- [x] **Task 1.1.1:** Convertere `get_random_match()` da `security.insecure()` a `security.enable()`
-  - [x] Implementare policy RLS per tabella `matches`
-  - [x] Aggiungere `auth.uid()` nelle query
-  - [x] Testare accesso senza token
-- [x] **Task 1.1.2:** Convertere `validate_player_intersection()` a `security.enable()`
-  - [x] Applicare policy RLS su `teams_seasons`
-  - [x] Validare input player_id
-  - [x] Logare tentativi di accesso non autorizzato
-- [x] **Task 1.1.3:** Convertere `generate_seasons()` a `security.enable()`
-  - [x] Limitare modifiche solo al team dell'utente
-  - [x] Bloccare eliminazione dati
-- [x] **Task 1.1.4:** Convertere `update_match_status()` a `security.enable()`
-  - [x] Verificare ownership match
-  - [x] Bloccare modifiche stato post-match
+### Task 1.1: Funzioni RPC e sicurezza a livello database
+> ⚠️ **Corretto in audit del 2026-09-19**: la formulazione originale di questa sezione ("convertire da `security.insecure()` a `security.enable()`") descriveva un'API che non esiste in Postgres/Supabase — probabilmente un placeholder mai verificato contro il codice reale. Le funzioni `generate_seasons()`, `update_match_status()` e la tabella `teams_seasons` citate sotto **non esistono nel codebase** (verificato con grep su tutti i file `.sql`/`.ts`/`.tsx`). Quanto segue riflette lo stato reale.
+
+- [x] **Task 1.1.1:** `get_random_match()` è consolidata in `supabase/schema/03_matches_and_leaderboard.sql` (versione con parametro `p_difficulty` e le validazioni anti-injection) ed è invocata dal client con l'anon/authenticated key tramite `supabase.rpc(...)` direttamente in `src/store/gameplaySlice.ts`
+- [x] **Task 1.1.2:** `validate_player_intersection()` è anch'essa `SECURITY DEFINER`, filtra sull'intersezione reale `player_teams`/`teams` (non esiste una tabella `teams_seasons`)
+- [ ] **Task 1.1.3 (rimosso):** `generate_seasons()` non esiste nel codebase — nessuna evidenza che questa funzionalità sia mai stata implementata o necessaria
+- [ ] **Task 1.1.4 (rimosso):** `update_match_status()` non esiste nel codebase — la tabella `matches` viene scritta solo tramite le RPC `save_match_result`/`complete_challenge`/`complete_friend_challenge`, non da un endpoint di update diretto
+
+### ⚠️ Task 1.1.5: Audit di controllo accessi sulle funzioni RPC — 2026-09-19
+Un audit mirato ha verificato riga per riga tutte le funzioni `SECURITY DEFINER` del progetto (che bypassano sempre le RLS delle tabelle su cui scrivono — solo un controllo esplicito `auth.uid()` dentro la funzione protegge). Trovate e **corrette** (applicate al DB Docker locale, verificato con test exploit via `curl` + anon key prima/dopo — vedi task successive per il deploy in produzione). La fix è stata scritta inizialmente in `supabase/alter-022-security-fixes.sql`; dopo il consolidamento dello schema SQL (2026-09-19, vedi `DOCKER.md`) è confluita nei file per dominio in `supabase/schema/` ed è archiviata, come standalone patch riutilizzabile, in `supabase/migrations_archive/alter-022-security-fixes.sql`:
+
+- [x] **CRITICO** `save_match_result()` — chiunque (anche non autenticato) poteva forgiare un risultato partita per qualsiasi `p_user_id`, alterando punteggio/tier/leaderboard altrui. **Corretto**: richiede `auth.uid() = p_user_id`.
+- [x] **CRITICO** `update_profile_stats()` — stesso problema. **Corretto**.
+- [x] **CRITICO** `complete_friend_challenge()` — chiunque poteva chiudere una sfida-amico altrui dichiarando un vincitore/punteggio arbitrario (es. il giocatore in perdita poteva auto-dichiararsi vincitore). **Corretto**: richiede che il chiamante sia `creator_id` o `opponent_id` della sfida.
+- [x] **ALTO** `abandon_friend_challenge()` — leggeva `auth.uid()` ma non lo usava per limitare chi potesse invalidare la sfida altrui. **Corretto**.
+- [x] **MEDIO** `complete_challenge()` / `expire_challenge()` (sfide via link pubblico) — stesso problema di autorizzazione mancante. **Corretto**.
+- [x] **ALTO** `run_retention_cleanup()` — chiamabile da chiunque (doveva essere solo amministrativa). **Corretto**: `REVOKE EXECUTE` da `anon`/`authenticated`.
+- [x] **BASSO** `record_audit_event()` (e i wrapper `record_auth_event`/`record_game_event`) — permetteva di iniettare voci di audit log false a nome di un altro utente. **Corretto**, consentendo comunque eventi anonimi legittimi (`p_user_id IS NULL`).
+- [ ] **ALTO, non risolto — richiede decisione di prodotto** `record_login_attempt()` — deve restare chiamabile senza sessione (serve prima del login), quindi non è possibile aggiungere un controllo `auth.uid()`: chiunque può chiamarla per un'email arbitraria e forzare il lockout di un account altrui (5 chiamate = 15 min di blocco), senza mai tentare un vero accesso. Alternativa consigliata: sostituire questo rate-limiting custom con quello nativo di GoTrue (configurabile nello stack self-hosted) invece di una RPC pubblica.
+- [ ] **Da fare**: applicare `supabase/migrations_archive/alter-022-security-fixes.sql` anche al progetto Supabase Cloud di produzione (incollandolo nell'SQL Editor di Supabase Studio) — non ancora fatto, la fix per ora è solo sul DB Docker locale.
+- [x] **Verifica 2026-10-06**: le nuove RPC introdotte per i tornei (`cancel_tournament`, `start_due_tournaments`, estensione di `create_tournament`) seguono lo stesso pattern corretto da questo audit — `cancel_tournament` richiede `auth.uid() = creator_id`, nessuna policy RLS INSERT/UPDATE diretta aggiunta sulle tabelle `tournaments*`. Nessuna nuova vulnerabilità introdotta.
+
+Bug funzionale collaterale trovato e corretto: `removeFriend()` (`src/lib/api/friends.ts`) cancellava l'amicizia solo lato client con `.from('friends').delete()`, bloccato in parte dalla RLS (corretta) e lasciando l'amicizia asimmetrica. Ora usa l'RPC `remove_friend()` già esistente.
 
 ### Task 1.2: Configurazione RLS (Row Level Security)
 - [x] **Task 1.2.1:** Definire policy per tabella `profiles`
@@ -43,10 +51,9 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [x] SELECT per tutti (roster pubblici)
   - [x] UPDATE solo per admin/creator
   - [x] INSERT disabilitato
-- [x] **Task 1.2.4:** Definire policy per tabella `teams_seasons`
-  - [x] SELECT per tutti
-  - [x] UPDATE solo per owner team
-  - [x] INSERT solo per owner team
+- [x] **Task 1.2.4:** Definire policy per tabella `player_teams` (nome corretto — `teams_seasons` non esiste)
+  - [x] SELECT per tutti (`supabase/security.sql`)
+  - [ ] UPDATE/INSERT: non ci sono policy dedicate, la tabella viene scritta solo dagli script di import (`scripts/import-data.ts`) con la service role key, non dal client
 - [x] **Task 1.2.5:** Testare tutte le policy con Supabase Studio
   - [x] Verificare che RPC falliscono senza auth
   - [x] Verificare che UPDATE falliscono per altri utenti
@@ -58,8 +65,18 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [x] Limitare lunghezza (max 50 caratteri)
   - [x] Regex validation per caratteri consentiti
 - [x] **Task 1.3.2:** Validare difficoltà selezionata
-  - [x] Array whitelist: [1, 2, 3]
-  - [x] Reject input non valido
+  > ⚠️ **Corretto il 2026-10-06** (scoperto durante l'implementazione di
+  > Modalità Hard, ROADMAP_FEATURES.md Milestone 10): non esiste nel
+  > codebase nessuna whitelist client-side `[1, 2, 3]` dedicata (verificato
+  > con grep su `src/lib/security.ts` e altrove) — il claim originale non
+  > era mai stato verificato contro l'implementazione reale. La
+  > validazione effettiva è server-side, in `get_random_match`
+  > (`supabase/schema/03_matches_and_leaderboard.sql`, esteso a 1-4 con
+  > `16_hard_mode.sql`): `IF p_difficulty < 1 OR p_difficulty > 4 THEN
+  > p_difficulty := 1`, un clamp silenzioso al default anziché un reject
+  > esplicito.
+  - [x] Validazione server-side (clamp a 1 se fuori range 1-4) in `get_random_match`
+  - [ ] Nessuna whitelist client-side dedicata — l'input è comunque limitato ai bottoni della UI (`HomeScreen.tsx`), non un campo libero
 - [x] **Task 1.3.3:** Validare campionato selezionato
   - [x] Whitelist ID: [null, 135, 39, 140, 78, 61]
   - [x] Mostra errore se ID non valido
@@ -92,21 +109,22 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
 ### Task 2.1: Session Security
 - [x] **Task 2.1.1:** Implementare session refresh automatico
   - [x] Refresh token ogni 30min (gestito automaticamente da Supabase)
-  - [x] Revoke session anomala (implementato in security.ts)
+  - [ ] Revoke session anomala: `revokeAllSessions()`/`refreshSession()`/`isSessionValid()` in `security.ts` esistono ma **non sono mai chiamate** da nessun componente (verificato con grep) — sono codice morto, non una funzionalità attiva
 - [x] **Task 2.1.2:** Aggiungere logout everywhere
   - [x] Logout su errore auth
   - [x] Logout su timeout
   - [x] Logout su password change
 - [x] **Task 2.1.3:** Rate limiting su login
-  - [x] Max 5 tentativi/minuto per email
+  - [x] Max 5 tentativi falliti in una finestra di 15 minuti per email/IP (corretto: non "al minuto" — vedi `is_email_locked`/`is_ip_locked` in `alter-005-rate-limit.sql`)
   - [x] Lockout 15min dopo 5 fallimenti
   - [ ] **(OPZIONALE)** Notifica email per lockout
 
 ### Task 2.2: Password Security
-- [x] **Task 2.2.1:** Implementare password strength requirements
-  - [x] Min 8 caratteri
-  - [x] Min 1 numero, 1 maiuscola, 1 simbolo
-  - [x] Non usare password recenti (5)
+- [ ] **Task 2.2.1:** Implementare password strength requirements
+  > ⚠️ **Corretto in audit 2026-09-19**: `validatePasswordStrength()` in `src/lib/security.ts` implementa davvero questi controlli, ma **non viene mai chiamata** da `AuthScreen.tsx` (verificato con grep — zero usi fuori da `security.ts` e dal suo test). Il form di registrazione/reset applica solo `minLength={6}`, senza requisiti di complessità. Va collegata la funzione al form per rendere reale quanto dichiarato.
+  - [ ] Min 8 caratteri (form UI richiede solo 6)
+  - [ ] Min 1 numero, 1 maiuscola, 1 simbolo (funzione pronta, non collegata alla UI)
+  - [ ] Non usare password recenti (5) (funzione pronta, ma nessuno storico password recenti viene passato)
 - [x] **Task 2.2.2:** Aggiungere password reset via email
   - [x] Token JWT a scadenza (1h) (gestito da Supabase)
   - [x] One-time use (gestito da Supabase)
@@ -116,14 +134,9 @@ Questo documento definisce le milestone e i task per rendere l'applicazione "Ist
   - [x] Work factor: 12 (gestito da Supabase)
 
 ### Task 2.3: CSRF Protection
-- [x] **Task 2.3.1:** Implementare anti-CSRF token
-  - [x] Token in form submit (gestito da Supabase)
-  - [x] Validazione server-side (gestito da Supabase)
-  - [x] Regenerate su ogni submit (gestito da Supabase)
-- [x] **Task 2.3.2:** HttpOnly cookies
-  - [x] Sesstion cookie HttpOnly (gestito da Supabase)
-  - [x] Secure flag (HTTPS) (gestito da Supabase)
-  - [x] SameSite=Strict (gestito da Supabase)
+> ⚠️ **Corretto in audit 2026-09-19**: questa sezione descriveva protezioni basate su cookie di sessione (HttpOnly/Secure/SameSite), ma `src/lib/supabase.ts` usa `createClient()` con la configurazione di default di `@supabase/supabase-js`, che salva la sessione in `localStorage` e autentica le chiamate con un header `Authorization: Bearer <jwt>` — **non usa cookie di sessione**. Questo di per sé rende il classico attacco CSRF (basato sull'invio automatico di cookie cross-site) non applicabile, ma espone un profilo di rischio diverso: furto del token via XSS (dato che è leggibile da qualsiasi script nella pagina). Le voci originali "gestito da Supabase" non erano state verificate contro l'implementazione reale.
+- [ ] **Task 2.3.1:** Rivalutare il rischio reale (XSS/token theft in localStorage) invece del CSRF classico, non applicabile con questa configurazione
+- [ ] **Task 2.3.2:** Non applicabile con l'attuale transporto Bearer/localStorage — da riconsiderare solo se si migra a sessioni basate su cookie (es. `@supabase/ssr`)
 
 ---
 
@@ -315,4 +328,4 @@ Prima di ogni deployment:
 
 ---
 
-*Document generato automaticamente - Aggiornato: 2026-03-24*
+*Document aggiornato: 2026-10-06 (verifica RPC tornei, nessuna nuova vulnerabilità — vedi Task 1.1.5; corretto claim obsoleto su whitelist difficoltà, Task 1.3.2)*

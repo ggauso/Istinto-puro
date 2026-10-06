@@ -1,5 +1,15 @@
 # Migrazione Database a PostgreSQL Self-Hosted
 
+> **Nota (2026-09-19)**: se l'obiettivo è far girare il progetto in locale
+> con Docker mantenendo Supabase self-hosted (autenticazione, Realtime,
+> RLS inclusi), usa invece `supabase/schema/` — vedi `DOCKER.md`. Questa
+> cartella resta valida per lo scenario diverso descritto sotto: un Postgres
+> "nudo" senza nessun componente Supabase, che richiede di riscrivere tu
+> stesso autenticazione, matchmaking realtime e RLS. `02_rpc_functions.sql`
+> contiene una versione di `get_random_match`/`validate_player_intersection`
+> senza le validazioni anti-injection che invece sono state riportate nel
+> file consolidato `supabase/schema/03_matches_and_leaderboard.sql`.
+
 Questa cartella contiene tutti gli script SQL necessari per ricreare da zero il database di **Istinto Puro** su un qualsiasi server PostgreSQL privato (VPS, Docker, AWS, Aruba, ecc.) senza dipendere da Supabase.
 
 ## Appunti Architetturali Prima di Iniziare
