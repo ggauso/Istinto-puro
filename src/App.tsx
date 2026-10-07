@@ -19,7 +19,19 @@ import { startDueTournaments } from './lib/api/tournaments';
 import { useTournamentMatch } from './components/tournament/useTournamentMatch';
 import type { AchievementCode } from './types/game';
 import { ACHIEVEMENT_LABELS } from './types/game';
-import { Award, X } from 'lucide-react';
+import { Award, X, Goal, BarChart3, Trophy, User } from 'lucide-react';
+import { BottomNavBar } from './components/ui/BottomNavBar';
+import { Toast } from './components/ui/Toast';
+import { Button } from './components/ui/Button';
+
+const NAV_ITEMS = [
+  { key: 'home', label: 'Gioca', icon: <Goal className="h-5 w-5" /> },
+  { key: 'leaderboard', label: 'Classifica', icon: <BarChart3 className="h-5 w-5" /> },
+  { key: 'tournaments', label: 'Tornei', icon: <Trophy className="h-5 w-5" /> },
+  { key: 'profile', label: 'Profilo', icon: <User className="h-5 w-5" /> },
+] as const;
+
+type NavScreen = (typeof NAV_ITEMS)[number]['key'];
 
 // Chiave sessionStorage per i toast achievement in attesa di essere
 // mostrati/chiusi esplicitamente — sopravvive al redirect a pagina intera
@@ -358,6 +370,18 @@ export default function App() {
     }
   };
 
+  // Stessa pulizia sessionStorage/stato già applicata dai bottoni di navigazione
+  // di HomeScreen, riusata qui per la bottom nav persistente (Fase 2).
+  const handleBottomNav = (key: NavScreen) => {
+    sessionStorage.removeItem('userLeftChallenge');
+    sessionStorage.removeItem('lastChallengeRoomId');
+    setUserLeftChallenge(false);
+    if (key === 'profile') setProfileInitialTab('info');
+    setCurrentScreen(key);
+  };
+
+  const showBottomNav = NAV_ITEMS.some((item) => item.key === currentScreen);
+
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-[#FFD700] selection:text-black">
       {currentScreen === 'challenge' && challengeToken && (
@@ -402,38 +426,40 @@ export default function App() {
             setProfileInitialTab('info');
             setCurrentScreen('profile');
           }}
-          onNavigateToLeaderboard={() => {
-            sessionStorage.removeItem('userLeftChallenge');
-            sessionStorage.removeItem('lastChallengeRoomId');
-            setUserLeftChallenge(false);
-            setCurrentScreen('leaderboard');
-          }}
-          onNavigateToTournaments={() => {
-            sessionStorage.removeItem('userLeftChallenge');
-            sessionStorage.removeItem('lastChallengeRoomId');
-            setUserLeftChallenge(false);
-            setCurrentScreen('tournaments');
-          }}
         />
       )}
 
-      {/* Toast Achievement (Milestone 8) — chiusura solo esplicita (nessun
-          auto-dismiss): a differenza del toast generico sotto, questo
-          sopravvive al redirect di fine partita (vedi sessionStorage sopra)
-          e l'utente deve vederlo e chiuderlo di proposito, non sparire da
-          solo mentre è ancora sulla schermata di vittoria/sconfitta. */}
-      {pendingAchievementToasts.length > 0 && (
-        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
-          <div className="px-5 py-4 rounded-xl shadow-2xl flex items-center gap-4 min-w-[320px] max-w-md bg-gradient-to-r from-yellow-600 to-amber-600 border border-yellow-400/40 animate-slide-up">
-            <Award className="w-8 h-8 text-white flex-shrink-0" />
+      {showBottomNav && (
+        <BottomNavBar items={NAV_ITEMS} active={currentScreen} onChange={handleBottomNav} />
+      )}
+
+      {/*
+        Fase 4B: tutti i toast vivono in alto, sotto la safe area, impilati
+        in un unico contenitore (invece di due posizioni fisse scoordinate
+        top/bottom come prima) per non sovrapporsi quando entrambi sono
+        visibili insieme.
+      */}
+      <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex flex-col items-center gap-3 px-4">
+        {/* Toast Achievement (Milestone 8) — chiusura solo esplicita (nessun
+            auto-dismiss): a differenza del toast generico sotto, questo
+            sopravvive al redirect di fine partita (vedi sessionStorage sopra)
+            e l'utente deve vederlo e chiuderlo di proposito, non sparire da
+            solo mentre è ancora sulla schermata di vittoria/sconfitta.
+            Contenuto multi-riga con 2 azioni: non entra nel primitivo
+            `Toast` (pensato per 1 riga + 1 azione), resta una card dedicata
+            ma con i token del design system al posto del gradiente oro/ambra
+            originale. */}
+        {pendingAchievementToasts.length > 0 && (
+          <div className="toast pointer-events-auto flex min-w-[320px] max-w-md items-center gap-4 rounded-np-lg border border-[#F2C14E]/40 bg-[#2B2210] px-5 py-4 shadow-np-sheet">
+            <Award className="h-8 w-8 shrink-0 text-[#FFE7A8]" />
             <div className="flex-1">
-              <div className="text-white font-bold text-sm">
+              <div className="text-sm font-bold text-[#FFE7A8]">
                 {pendingAchievementToasts.length === 1
                   ? `Achievement sbloccato: ${ACHIEVEMENT_LABELS[pendingAchievementToasts[0]]}!`
                   : `${pendingAchievementToasts.length} achievement sbloccati!`}
               </div>
               {pendingAchievementToasts.length > 1 && (
-                <div className="text-yellow-100 text-xs mt-0.5">
+                <div className="mt-0.5 text-xs text-[#FFE7A8]/80">
                   {pendingAchievementToasts.map((code) => ACHIEVEMENT_LABELS[code]).join(', ')}
                 </div>
               )}
@@ -444,87 +470,79 @@ export default function App() {
                 setCurrentScreen('profile');
                 dismissAchievementToasts();
               }}
-              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold text-white transition-colors flex-shrink-0"
+              className="shrink-0 rounded-np-pill bg-white/10 px-3 py-1.5 text-xs font-bold text-[#FFE7A8] transition-colors hover:bg-white/20"
             >
               I miei achievement
             </button>
             <button
               onClick={dismissAchievementToasts}
               aria-label="Chiudi"
-              className="text-white/70 hover:text-white transition-colors flex-shrink-0"
+              className="shrink-0 text-[#FFE7A8]/70 transition-colors hover:text-[#FFE7A8]"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Global Toast Notification */}
-      {toastWithAction && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-          <div className={`
-            px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 min-w-[320px] max-w-md
-            animate-slide-up
-            ${toastWithAction.type === 'success' ? 'bg-green-600' :
-              toastWithAction.type === 'error' ? 'bg-red-600' : 'bg-zinc-800 border border-yellow-500/30'}
-          `}>
-            <span className="flex-1 text-white text-sm font-medium">{toastWithAction.message}</span>
-
-            {/* Friend Challenge Toast with Accept/Decline */}
+        {/* Toast globale: sfida-amico (2 azioni, resta una pill dedicata) o conferma/errore/info a 1 azione (usa il primitivo `Toast`) */}
+        {toastWithAction && (
+          <div className="pointer-events-auto">
             {toastWithAction.challengeId ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    if (!toastWithAction.challengeId || !toastWithAction.challengeRoomId) return;
-                    try {
-                      const result = await acceptFriendChallenge(toastWithAction.challengeId);
-                      if (result && result.success) {
-                        // Accepted! Redirect to /sfida/room_id (BOTH players will go here)
-                        window.location.href = `/sfida/${toastWithAction.challengeRoomId}`;
-                      }
-                    } catch (err) {
-                      console.error('Error accepting challenge:', err);
-                    }
-                    setToastWithAction(null);
-                  }}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-bold rounded-lg transition-colors"
-                >
-                  Accetta
-                </button>
-                <button
-                  onClick={async () => {
-                    if (toastWithAction.challengeId) {
+              <div className="toast flex min-w-[320px] max-w-md items-center gap-4 rounded-np-pill bg-turf-2 px-5 py-3 shadow-np-sheet">
+                <span className="flex-1 text-sm font-semibold">{toastWithAction.message}</span>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    variant="volt"
+                    size="sm"
+                    onClick={async () => {
+                      if (!toastWithAction.challengeId || !toastWithAction.challengeRoomId) return;
                       try {
-                        await supabase.rpc('decline_friend_challenge', { p_challenge_id: toastWithAction.challengeId });
-                        // TODO: Notify A that B declined
+                        const result = await acceptFriendChallenge(toastWithAction.challengeId);
+                        if (result && result.success) {
+                          // Accepted! Redirect to /sfida/room_id (BOTH players will go here)
+                          window.location.href = `/sfida/${toastWithAction.challengeRoomId}`;
+                        }
                       } catch (err) {
-                        console.error('Error declining challenge:', err);
+                        console.error('Error accepting challenge:', err);
                       }
-                    }
-                    setToastWithAction(null);
-                  }}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-bold rounded-lg transition-colors"
-                >
-                  Rifiuta
-                </button>
+                      setToastWithAction(null);
+                    }}
+                  >
+                    Accetta
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      if (toastWithAction.challengeId) {
+                        try {
+                          await supabase.rpc('decline_friend_challenge', { p_challenge_id: toastWithAction.challengeId });
+                          // TODO: Notify A that B declined
+                        } catch (err) {
+                          console.error('Error declining challenge:', err);
+                        }
+                      }
+                      setToastWithAction(null);
+                    }}
+                  >
+                    Rifiuta
+                  </Button>
+                </div>
               </div>
             ) : (
-              // Regular Toast
-              toastWithAction.action && toastWithAction.actionLabel && (
-                <button
-                  onClick={() => {
-                    toastWithAction.action?.();
-                    setToastWithAction(null);
-                  }}
-                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black text-sm font-bold rounded-lg transition-colors"
-                >
-                  {toastWithAction.actionLabel}
-                </button>
-              )
+              <Toast
+                tone={toastWithAction.type === 'success' ? 'success' : toastWithAction.type === 'error' ? 'error' : 'info'}
+                message={toastWithAction.message}
+                actionLabel={toastWithAction.action ? toastWithAction.actionLabel : undefined}
+                onAction={() => {
+                  toastWithAction.action?.();
+                  setToastWithAction(null);
+                }}
+              />
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

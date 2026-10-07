@@ -1,0 +1,755 @@
+/*
+ * Night Pitch — design tokens & utility di base per il restyle.
+ * Vedi restyle.md (Fase 0) per il piano completo e i riferimenti al mockup.
+ * Radii/ombre usano il prefisso "np-" per non toccare la scala Tailwind
+ * default finché le schermate non restyled convivono con quelle nuove.
+ */
+
+@theme {
+  /* Colori */
+  --color-ink: #0b0c0a;
+  --color-turf-1: #141613;
+  --color-turf-2: #1c1f1b;
+  --color-turf-3: #2a2e27;
+  --color-chalk: #f3f5ee;
+  --color-chalk-2: #a9afa2;
+  --color-label: #7c8376;
+  --color-volt: #d7ff3a;
+  --color-volt-pressed: #b8e01f;
+  --color-ember: #ff5b3a;
+  --color-ember-pressed: #e6431f;
+  --color-ember-light: #ff7a5c;
+
+  /* Font */
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-display: 'Archivo', 'Arial Narrow', sans-serif;
+  --font-cond: 'Archivo', 'Arial Narrow', sans-serif;
+
+  /* Radii */
+  --radius-np-sm: 8px;
+  --radius-np-md: 14px;
+  --radius-np-lg: 22px;
+  --radius-np-xl: 32px;
+  --radius-np-hero: 32px 32px 32px 8px;
+  --radius-np-pill: 999px;
+
+  /* Ombre */
+  --shadow-np-e1: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
+  --shadow-np-e2-volt: 0 0 0 1px rgba(215, 255, 58, 0.5), 0 0 32px rgba(215, 255, 58, 0.25);
+  --shadow-np-sheet: 0 -20px 40px -12px rgba(0, 0, 0, 0.8);
+}
+
+/*
+ * Tier: gradient multi-stop, non rappresentabili come singolo color token
+ * Tailwind — restano plain custom properties, usate via var() nei componenti
+ * (TierBadge, AchievementBadge) e non generano utility class.
+ */
+:root {
+  --tier-bronze-from: #e0a878;
+  --tier-bronze-to: #8e5a34;
+  --tier-bronze-label: #c98a5a;
+
+  --tier-silver-from: #f0f3f7;
+  --tier-silver-to: #8d949e;
+  --tier-silver-label: #c9ced6;
+
+  --tier-gold-from: #ffe08a;
+  --tier-gold-to: #c4901c;
+  --tier-gold-label: #f2c14e;
+
+  --tier-platinum-from: #c6fff6;
+  --tier-platinum-to: #4fb3a4;
+  --tier-platinum-label: #8fe3d6;
+
+  --tier-diamond-from: #dce5ff;
+  --tier-diamond-to: #6178e0;
+  --tier-diamond-label: #9db4ff;
+}
+
+/*
+ * Base globale del design system. Le schermate non ancora restyled
+ * impostano il proprio sfondo a livello di wrapper (es. bg-[#121212]) che
+ * copre comunque questo valore: resta innocuo finché quella schermata non
+ * viene aggiornata nelle fasi successive.
+ */
+body {
+  margin: 0;
+  background: var(--color-ink);
+}
+a {
+  color: var(--color-volt);
+}
+a:hover {
+  color: #efff9e;
+}
+
+/* Tipografia composita: più proprietà insieme, non riconducibile a un singolo token */
+.disp {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 0.92;
+}
+
+.cond {
+  font-family: var(--font-cond);
+  font-stretch: 75%;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Interazioni bottoni/elementi "vivi", riprese dal mockup componenti.html */
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.btn {
+  transition:
+    transform 0.16s cubic-bezier(0.2, 0.9, 0.1, 1),
+    background-color 0.2s,
+    box-shadow 0.2s;
+}
+.btn:hover {
+  transform: translateY(-2px);
+}
+.btn:active {
+  transform: scale(0.95);
+}
+
+.btn-volt:hover,
+.btn-volt:active {
+  box-shadow: 0 10px 30px -6px rgba(215, 255, 58, 0.55);
+}
+
+.btn-ghost:hover {
+  background: var(--color-turf-3) !important;
+}
+
+.btn .arr {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.btn:hover .arr {
+  transform: translateX(5px);
+}
+
+.ib svg {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ib:hover svg {
+  transform: rotate(-12deg) scale(1.1);
+}
+
+.tab-ind {
+  transition: transform 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+.tab {
+  transition: color 0.2s;
+}
+
+.chip {
+  transition:
+    background-color 0.2s,
+    color 0.2s,
+    transform 0.16s;
+}
+.chip:active {
+  transform: scale(0.94);
+}
+
+.field {
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+.field:focus-within {
+  border-color: var(--color-volt) !important;
+  box-shadow: 0 0 0 4px rgba(215, 255, 58, 0.15);
+}
+.field input {
+  outline: none;
+}
+
+.lift {
+  transition:
+    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s;
+}
+.lift:active {
+  transform: scale(0.98);
+}
+.lift:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.sw {
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.sw:hover {
+  transform: translateY(-6px);
+}
+
+.row-hover {
+  transition: background-color 0.2s;
+}
+.row-hover:hover {
+  background: var(--color-turf-2) !important;
+}
+
+/* Ingresso riga lista (classifica, storico, amici): Glide con sfalsamento via `animation-delay` inline per riga */
+@keyframes np-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.row-in {
+  animation: np-row-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Feedback di pressione generico per link/bottoni semplici (header, nav, rail campionati) */
+.press {
+  transition:
+    transform 0.16s cubic-bezier(0.2, 0.9, 0.1, 1),
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.press:active {
+  transform: scale(0.95);
+}
+
+/* Rail orizzontale con scroll-snap (campionati, filtri a card) */
+.rail {
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+.rail > * {
+  scroll-snap-align: start;
+}
+
+/* Bandiera campionato: l'SVG interno riempie sempre il contenitore */
+.flag {
+  position: relative;
+  overflow: hidden;
+}
+.flag svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes np-pop {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.pop {
+  animation: np-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Glow pulsante della CTA primaria piena larghezza (distinto da `.glow`: qui è un'ombra proiettata che respira, non un alone concentrico) */
+@keyframes np-cta-glow {
+  0%,
+  100% {
+    box-shadow: 0 10px 30px -10px rgba(215, 255, 58, 0.5);
+  }
+  50% {
+    box-shadow: 0 10px 40px -6px rgba(215, 255, 58, 0.8);
+  }
+}
+.cta-glow {
+  animation: np-cta-glow 2.4s ease-in-out infinite;
+}
+
+/* Keyframes nominati del design system (Snap/Bounce/Glide/Clock, vedi restyle.md) */
+@keyframes np-pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(215, 255, 58, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(215, 255, 58, 0);
+  }
+}
+.glow {
+  animation: np-pulse-glow 2.2s ease-out infinite;
+}
+
+@keyframes np-stripes {
+  to {
+    background-position: 28px 0;
+  }
+}
+.stripe {
+  background-image: repeating-linear-gradient(-45deg, rgba(11, 12, 10, 0.18) 0 7px, transparent 7px 14px);
+  background-size: 28px 100%;
+  animation: np-stripes 0.8s linear infinite;
+}
+
+@keyframes np-ring-in {
+  from {
+    stroke-dashoffset: 302;
+  }
+}
+.ring {
+  animation: np-ring-in 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes np-flick {
+  0%,
+  100% {
+    transform: scale(1) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.12) rotate(3deg);
+  }
+}
+.flame {
+  animation: np-flick 1.1s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+@keyframes np-shine {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  60%,
+  100% {
+    transform: translateX(320%) skewX(-20deg);
+  }
+}
+.shine {
+  animation: np-shine 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+/*
+ * I toast vivono in alto (mai sopra il timer in partita, vedi
+ * Dialogs.dc.html) e scendono dall'alto — sostituiva un'entrata dal basso
+ * scritta prima di questo mockup più specifico sulla posizione.
+ */
+@keyframes np-toast-in {
+  0% {
+    transform: translateY(-16px) scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+.toast {
+  animation: np-toast-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes np-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+.shake {
+  animation: np-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes np-drop {
+  0% {
+    transform: translateY(-24px) scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(4px) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+.drop {
+  animation: np-drop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes np-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.grow {
+  transform-origin: bottom;
+  animation: np-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * Podio classifica (Fase 5): le 3 colonne crescono con un timing diverso
+ * da `.grow` (bounce più marcato, 700ms) e sfalsate centro→esterno: oro
+ * parte per primo (.1s), poi argento (.25s), poi bronzo (.4s) — ordine
+ * esatto di `classifica.html`, non l'ordine visivo delle colonne.
+ */
+.podium-gold {
+  transform-origin: bottom;
+  animation: np-grow 0.7s 0.1s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+.podium-silver {
+  transform-origin: bottom;
+  animation: np-grow 0.7s 0.25s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+.podium-bronze {
+  transform-origin: bottom;
+  animation: np-grow 0.7s 0.4s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+/* Corona sopra il 1° posto: stesso `np-drop` del design system, con ritardo dedicato (parte dopo la crescita delle barre) */
+.crown {
+  animation: np-drop 0.6s 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/*
+ * Stato "hot" del timer (ultimi secondi): unico caso in cui il Clock
+ * lineare ammette un pulse. Keyframe esatto da `partita-round-in-corso.html`
+ * (lì chiamato `throb`): sostituiva un'approssimazione scale(1.06) steps(2)
+ * scritta prima di rileggere il mockup esatto della schermata di gioco.
+ */
+@keyframes np-clock-hot {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.hot {
+  animation: np-clock-hot 1s ease-out infinite;
+}
+
+/* Loader a tema (Fase 10/1.19): palleggio, radar, tabellone, rigore, fischio d'inizio, skeleton prato */
+@keyframes np-ball-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-22px);
+  }
+}
+.ball-bounce {
+  animation: np-ball-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes np-ball-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleX(0.6);
+    opacity: 0.15;
+  }
+}
+.ball-shadow {
+  animation: np-ball-shadow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes np-radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.radar-sweep {
+  animation: np-radar-sweep 2.4s linear infinite;
+}
+
+@keyframes np-radar-ping {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+.radar-ping {
+  animation: np-radar-ping 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes np-flap {
+  0% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(-90deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}
+.flap {
+  animation: np-flap 0.45s steps(2, end);
+}
+
+@keyframes np-penalty-fly {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(var(--fly-x, 64px), var(--fly-y, -40px)) scale(0.6);
+  }
+}
+.penalty-fly {
+  animation: np-penalty-fly 0.5s cubic-bezier(0.2, 0.9, 0.1, 1) both;
+}
+
+@keyframes np-kickoff-ring {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: var(--ring-circumference, 251);
+  }
+}
+.kickoff-ring {
+  animation: np-kickoff-ring 1s linear forwards;
+}
+
+@keyframes np-pitch-mow {
+  to {
+    background-position: 28px 0;
+  }
+}
+.pitch-skeleton {
+  background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 0 10px, rgba(255, 255, 255, 0.015) 10px 20px);
+  background-size: 28px 100%;
+  animation: np-pitch-mow 1.2s linear infinite;
+}
+
+/* Dialog e avvisi (Fase 4B): wobble icona distruttiva, moneta che gira, anello pulsante countdown, puntini "sta scrivendo/riconnessione", barra countdown auto-chiusura */
+@keyframes np-wobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  15% {
+    transform: rotate(-14deg);
+  }
+  30% {
+    transform: rotate(12deg);
+  }
+  45% {
+    transform: rotate(-6deg);
+  }
+  60% {
+    transform: rotate(0);
+  }
+}
+.wobble {
+  animation: np-wobble 1.8s ease-in-out infinite;
+  transform-origin: 50% 30%;
+}
+
+@keyframes np-coin-flip {
+  0%,
+  100% {
+    transform: rotateY(0);
+  }
+  50% {
+    transform: rotateY(180deg);
+  }
+}
+.coin {
+  animation: np-coin-flip 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes np-pulse-ring-countdown {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+.pulse-ring {
+  animation: np-pulse-ring-countdown 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes np-typing-dot {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.dot1 {
+  animation: np-typing-dot 1s infinite;
+}
+.dot2 {
+  animation: np-typing-dot 1s 0.2s infinite;
+}
+.dot3 {
+  animation: np-typing-dot 1s 0.4s infinite;
+}
+
+@keyframes np-bar-deplete {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.bar-deplete {
+  animation: np-bar-deplete 3s linear forwards;
+  transform-origin: 0 50%;
+}
+
+@keyframes np-slide-l {
+  from {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes np-slide-r {
+  from {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.slide-l {
+  animation: np-slide-l 0.5s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.slide-r {
+  animation: np-slide-r 0.5s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * prefers-reduced-motion: i loader diventano statici (pulsazione d'opacità
+ * sostituisce lo scatto), gli scatti diventano dissolvenze da 120ms.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .glow,
+  .stripe,
+  .ring,
+  .flame,
+  .shine,
+  .toast,
+  .shake,
+  .drop,
+  .grow,
+  .hot,
+  .ball-bounce,
+  .ball-shadow,
+  .radar-sweep,
+  .radar-ping,
+  .flap,
+  .penalty-fly,
+  .kickoff-ring,
+  .pitch-skeleton,
+  .pop,
+  .cta-glow,
+  .wobble,
+  .coin,
+  .pulse-ring,
+  .dot1,
+  .dot2,
+  .dot3,
+  .bar-deplete,
+  .slide-l,
+  .slide-r,
+  .podium-gold,
+  .podium-silver,
+  .podium-bronze,
+  .crown,
+  .row-in {
+    animation: none !important;
+  }
+
+  .press:active {
+    transform: none !important;
+    transition-duration: 120ms !important;
+  }
+
+  .ball-bounce,
+  .ball-shadow {
+    animation: np-pulse-opacity 1.4s ease-in-out infinite !important;
+  }
+
+  .btn,
+  .lift,
+  .sw,
+  .tab-ind,
+  .ib svg,
+  .btn .arr {
+    transition-duration: 120ms !important;
+  }
+
+  .btn:hover,
+  .btn:active,
+  .lift:hover,
+  .lift:active,
+  .sw:hover {
+    transform: none !important;
+  }
+}
+
+@keyframes np-pulse-opacity {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

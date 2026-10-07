@@ -1,41 +1,53 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../store';
 import { useAuthStore } from '../authStore';
 import { createChallenge, getMyActiveChallenge } from '../lib/api/challenges';
-import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Play, Loader2, Globe, Users, Bot, User, Send, X, ExternalLink, Swords } from 'lucide-react';
+import { calculateTier } from '../types/game';
+import { Users, Bot, Bell, Send, X, User, ArrowRight, Coins, Check, Loader2 } from 'lucide-react';
+import { Button } from './ui/Button';
+import { SegmentedControl } from './ui/SegmentedControl';
+import { DifficultySelector, type DifficultyOption } from './ui/DifficultySelector';
+import { Field } from './ui/Field';
+import { BottomSheet } from './ui/BottomSheet';
+import { RadarLoader } from './ui/loaders/RadarLoader';
+import { TierBadge } from './TierBadge';
+import { LeagueFlag, type LeagueKey } from './ui/LeagueFlag';
+import { cn } from '../lib/cn';
 
-const LEAGUES = [
-  { id: null, name: 'Tutti i Campionati' },
-  { id: 135, name: 'Serie A 🇮🇹' },
-  { id: 39, name: 'Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-  { id: 140, name: 'La Liga 🇪🇸' },
-  { id: 78, name: 'Bundesliga 🇩🇪' },
-  { id: 61, name: 'Ligue 1 🇫🇷' },
+const LEAGUES: { id: number | null; name: string }[] = [
+  { id: null, name: 'Tutti' },
+  { id: 135, name: 'Serie A' },
+  { id: 39, name: 'Premier League' },
+  { id: 140, name: 'La Liga' },
+  { id: 78, name: 'Bundesliga' },
+  { id: 61, name: 'Ligue 1' },
 ];
 
-const DIFFICULTIES = [
-  { id: 1, name: 'Facile' },
-  { id: 2, name: 'Medio' },
-  { id: 3, name: 'Difficile' },
-  { id: 4, name: 'Hard', hard: true },
+const DIFFICULTY_OPTIONS: DifficultyOption<number>[] = [
+  { value: 1, label: 'Facile', tone: 'volt' },
+  { value: 2, label: 'Medio', tone: 'volt' },
+  { value: 3, label: 'Difficile', tone: 'volt' },
+  { value: 4, label: 'Hard', tone: 'ember' },
 ];
 
 interface HomeScreenProps {
   onNavigateToAuth: () => void;
   onNavigateToProfile: () => void;
-  onNavigateToLeaderboard: () => void;
-  onNavigateToTournaments: () => void;
 }
 
-export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateToLeaderboard, onNavigateToTournaments }: HomeScreenProps) {
-  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, errorMsg, setErrorMsg } = useGameStore();
+export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreenProps) {
+  const { findMatch, status, selectedLeague, setSelectedLeague, selectedDifficulty, setSelectedDifficulty, gameMode, setGameMode, resetGame } = useGameStore();
   const { user, profile } = useAuthStore();
 
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [pendingChallengeToken, setPendingChallengeToken] = useState<string | null>(null);
+  // Store locale: la stessa variabile veniva letta/scritta da `useGameStore()`
+  // come `errorMsg`/`setErrorMsg`, campi mai esistiti su `GameState` — il
+  // banner non si mostrava mai e `setErrorMsg(...)` avrebbe lanciato
+  // un'eccezione reale al primo errore di creazione sfida.
+  const [localError, setLocalError] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
 
   // Polling per il creatore della sfida - check if someone accepted
@@ -99,15 +111,9 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
       setPendingChallengeToken(result.token); // Start polling for this challenge
       setShowChallengeModal(true);
     } else {
-      setErrorMsg(result.error || 'Errore nella creazione della sfida');
+      setLocalError(result.error || 'Errore nella creazione della sfida');
     }
     setCreatingChallenge(false);
-  };
-
-  const handleGoToChallenge = () => {
-    if (challengeToken) {
-      window.location.href = `/sfida/${challengeToken}`;
-    }
   };
 
   const handleCloseChallengeModal = () => {
@@ -115,246 +121,211 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile, onNavigateTo
     // Keep pendingChallengeToken to keep polling active
   };
 
+  const isSearching = status === 'searching';
+  const challengeLink = challengeToken ? `${window.location.origin}/sfida/${challengeToken}` : '';
+  const displayName = profile?.first_name || user?.email?.split('@')[0] || 'Ospite';
+  const selectedLeagueName = LEAGUES.find((l) => l.id === selectedLeague)?.name ?? LEAGUES[0].name;
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#121212] text-white p-6 font-sans relative">
-      <div className="absolute top-6 right-6 flex items-center gap-2">
-        {user && (
-          <button
-            onClick={onNavigateToLeaderboard}
-            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
-            title="Classifica"
-          >
-            <Trophy className="w-4 h-4 text-[#FFD700]" />
-            <span className="font-medium text-sm">Classifica</span>
-          </button>
-        )}
-        {user && (
-          <button
-            onClick={onNavigateToTournaments}
-            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
-            title="Tornei"
-          >
-            <Swords className="w-4 h-4 text-purple-400" />
-            <span className="font-medium text-sm">Tornei</span>
-          </button>
-        )}
+    <div className="relative flex min-h-screen flex-col gap-[18px] overflow-hidden bg-ink px-4 pb-[140px] pt-12 text-chalk">
+      <svg
+        viewBox="0 0 300 300"
+        className="pointer-events-none absolute -right-36 top-10 h-[300px] w-[300px] opacity-[.07]"
+        fill="none"
+        stroke="#F3F5EE"
+        strokeWidth="2"
+        aria-hidden="true"
+      >
+        <circle cx="150" cy="150" r="140" />
+        <circle cx="150" cy="150" r="4" fill="#F3F5EE" />
+        <line x1="150" y1="0" x2="150" y2="300" />
+      </svg>
+
+      <header className="relative flex items-center justify-between gap-3">
         {user ? (
-          <button
-            onClick={onNavigateToProfile}
-            className="flex items-center gap-2 bg-[#1E1E1E] hover:bg-zinc-800 border border-white/10 px-4 py-2 rounded-full transition-colors"
-          >
-            <div className="w-6 h-6 rounded-full bg-[#FFD700] flex items-center justify-center overflow-hidden">
+          <button type="button" onClick={onNavigateToProfile} className="press flex items-center gap-2.5">
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-0.5"
+              style={{ background: 'conic-gradient(var(--color-volt) 0 50%, var(--color-turf-3) 50%)' }}
+            >
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                <img src={profile.avatar_url} alt="Avatar" className="h-full w-full rounded-full border-2 border-ink object-cover" />
               ) : (
-                <User className="w-4 h-4 text-black" />
+                <span className="flex h-full w-full items-center justify-center rounded-full border-2 border-ink bg-turf-2 text-sm font-extrabold">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
               )}
-            </div>
-            <span className="font-medium text-sm">
-              {profile?.first_name || user.email?.split('@')[0]}
+            </span>
+            <span className="flex flex-col items-start gap-0.5">
+              <span className="text-xs text-chalk-2">Ciao,</span>
+              <span className="text-base font-bold">{displayName}</span>
             </span>
           </button>
         ) : (
-          <button
-            onClick={onNavigateToAuth}
-            className="flex items-center gap-2 bg-[#FFD700] text-black hover:bg-yellow-400 px-4 py-2 rounded-full font-bold transition-colors"
-          >
-            <User className="w-4 h-4" />
-            <span>Accedi</span>
-          </button>
+          <span className="disp text-sm">Istinto Puro</span>
         )}
-      </div>
 
-      <motion.div
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="flex flex-col items-center space-y-6"
-      >
-        <div className="w-32 h-32 bg-zinc-900 rounded-full flex items-center justify-center border-4 border-[#FFD700] shadow-[0_0_30px_rgba(255,215,0,0.3)]">
-          <Trophy size={64} className="text-[#FFD700]" />
-        </div>
-
-        <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-yellow-500 uppercase text-center">
-          Istinto Puro
-        </h1>
-
-        <p className="text-zinc-400 text-center max-w-sm text-lg leading-relaxed">
-          Il trivia calcistico 1vs1. Trova il giocatore in comune tra le due squadre prima che scada il tempo.
-        </p>
-
-        {errorMsg && (
-          <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-xl max-w-sm text-center text-sm font-medium">
-            {errorMsg}
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="mono flex h-9 items-center gap-1.5 rounded-np-pill bg-[rgba(242,193,78,.12)] px-3 text-[13px] font-bold text-[#FFD36E]">
+              <Coins className="h-[15px] w-[15px]" strokeWidth={2} />
+              {profile?.coins ?? 0}
+            </span>
             <button
-              onClick={() => setErrorMsg(null)}
-              className="ml-2 underline text-red-400 hover:text-red-300"
+              type="button"
+              aria-label="Notifiche"
+              className="press relative flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-turf-1 text-chalk"
             >
-              Chiudi
+              <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
+              <span className="absolute right-[11px] top-[10px] h-2 w-2 rounded-full bg-ember" />
             </button>
           </div>
-        )}
-
-        {status === 'searching' ? (
-          <div className="mt-8 flex flex-col items-center space-y-4">
-            <Loader2 className="animate-spin text-[#FFD700]" size={48} />
-            <p className="text-[#FFD700] font-bold animate-pulse text-xl">Ricerca avversario...</p>
-          </div>
         ) : (
-          <div className="mt-8 flex flex-col items-center space-y-6 w-full max-w-xs">
-            <div className="w-full flex bg-zinc-900 rounded-xl p-1 border-2 border-zinc-800">
-              <button
-                onClick={() => setGameMode('pvp')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-colors ${gameMode === 'pvp' ? 'bg-[#FFD700] text-black' : 'text-zinc-400 hover:text-white'}`}
-              >
-                <Users size={20} />
-                PvP
-              </button>
-              <button
-                onClick={() => setGameMode('ai')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-colors ${gameMode === 'ai' ? 'bg-[#FFD700] text-black' : 'text-zinc-400 hover:text-white'}`}
-              >
-                <Bot size={20} />
-                Vs AI
-              </button>
-            </div>
+          <Button variant="volt" size="sm" onClick={onNavigateToAuth}>
+            <User className="h-4 w-4" />
+            Accedi
+          </Button>
+        )}
+      </header>
 
-            {/* Challenge Button - only show for PvP mode */}
-            {gameMode === 'pvp' && user && (
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={handleCreateChallenge}
-                disabled={creatingChallenge || status === 'searching'}
-                className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-xl border-2 border-purple-500/50 transition-colors"
-              >
-                {creatingChallenge ? (
-                  <Loader2 className="animate-spin w-5 h-5" />
-                ) : (
-                  <Send size={20} />
-                )}
-                <span>Sfida un amico</span>
-              </motion.button>
-            )}
+      <section className="relative flex flex-col gap-2">
+        <span className="cond text-[11px] text-volt">Trivia calcistico 1vs1</span>
+        <h1 className="disp text-[40px]">
+          Istinto <span className="text-volt">puro</span>
+        </h1>
+        <p className="max-w-[300px] text-[14px] leading-[1.45] text-chalk-2">
+          Trova il giocatore in comune tra due squadre prima che scada il tempo.
+        </p>
+      </section>
 
-            <div className="w-full space-y-2">
-              <label className="text-zinc-400 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
-                <Globe size={16} />
-                Seleziona Campionato
-              </label>
-              <select
-                value={selectedLeague === null ? '' : selectedLeague}
-                onChange={(e) => setSelectedLeague(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-zinc-900 border-2 border-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:border-[#FFD700] transition-colors appearance-none text-center font-medium"
-              >
-                {LEAGUES.map((league) => (
-                  <option key={league.id || 'all'} value={league.id || ''}>
-                    {league.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {localError && (
+        <div className="relative flex items-center justify-between gap-3 rounded-np-md border border-ember/35 bg-ember/10 px-4 py-3 text-sm text-ember-light">
+          <span>{localError}</span>
+          <button type="button" onClick={() => setLocalError(null)} className="mono shrink-0 text-xs underline">
+            Chiudi
+          </button>
+        </div>
+      )}
 
-            <div className="w-full space-y-2">
-              <label className="text-zinc-400 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
-                <Trophy size={16} />
-                Difficoltà
-              </label>
-              <div className="flex gap-2 w-full">
-                {DIFFICULTIES.map((diff) => (
-                  <button
-                    key={diff.id}
-                    onClick={() => setSelectedDifficulty(diff.id)}
-                    className={`flex-1 py-3 rounded-xl font-bold transition-colors border-2 ${
-                      selectedDifficulty === diff.id
-                        ? diff.hard
-                          ? 'bg-red-600 text-white border-red-600'
-                          : 'bg-[#FFD700] text-black border-[#FFD700]'
-                        : diff.hard
-                          ? 'bg-zinc-900 text-red-500 border-red-900/60 hover:border-red-600 hover:text-red-400'
-                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
-                    }`}
-                  >
-                    {diff.name}
-                  </button>
-                ))}
-              </div>
-              {selectedDifficulty === 4 && (
-                <p className="text-red-500 text-xs text-center font-medium">
-                  ⚠️ Timer 5s, penalità -50 punti per errore, serve nome e cognome completi
-                </p>
-              )}
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={findMatch}
-              className="w-full flex items-center justify-center space-x-3 bg-[#FFD700] text-black font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] hover:shadow-[0_0_30px_rgba(255,215,0,0.6)] transition-all"
-            >
-              <Play size={24} fill="currentColor" />
-              <span>{gameMode === 'ai' ? 'Sfida l\'AI' : 'Cerca Avversario'}</span>
-            </motion.button>
+      {isSearching ? (
+        <div className="relative flex flex-1 flex-col items-center gap-6 pb-10 pt-6">
+          <RadarLoader
+            center={<span className="disp text-lg text-volt">{displayName.charAt(0).toUpperCase()}</span>}
+          />
+          <div className="flex flex-col items-center gap-2 text-center">
+            <span className="disp text-2xl">Cerco rivale…</span>
+            {profile && <TierBadge tier={calculateTier(profile.total_score)} size="sm" />}
           </div>
-        )}
-      </motion.div>
+          <Button variant="ghost" onClick={() => resetGame()}>
+            Annulla ricerca
+          </Button>
+        </div>
+      ) : (
+        <>
+          <section className="relative flex flex-col gap-2">
+            <SegmentedControl
+              shape="rounded"
+              className="bg-turf-1"
+              options={[
+                { value: 'pvp', label: 'PvP', icon: <Users className="h-[18px] w-[18px]" strokeWidth={2.2} /> },
+                { value: 'ai', label: 'Vs IA', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2.2} /> },
+              ]}
+              value={gameMode}
+              onChange={(value) => setGameMode(value as 'pvp' | 'ai')}
+            />
+            <span className="pl-1 text-xs text-label">
+              {gameMode === 'pvp' ? 'Un avversario reale, abbinato per tier' : 'Allenati contro il computer, quando vuoi'}
+            </span>
+          </section>
 
-      {/* Challenge Modal */}
-      <AnimatePresence>
-        {showChallengeModal && challengeToken && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={handleCloseChallengeModal}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-zinc-900 border border-purple-500/30 rounded-2xl p-6 max-w-md w-full"
-              onClick={(e) => e.stopPropagation()}
+          <section className="relative flex flex-col gap-2.5">
+            <div className="flex items-baseline justify-between">
+              <span className="cond text-[11px] text-label">Campionato</span>
+              <span className="text-xs text-chalk-2">{selectedLeagueName}</span>
+            </div>
+            <div className="rail -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 pt-0.5">
+              {LEAGUES.map((league) => {
+                const active = selectedLeague === league.id;
+                return (
+                  <button
+                    key={league.id ?? 'all'}
+                    type="button"
+                    onClick={() => setSelectedLeague(league.id)}
+                    className={cn(
+                      'press relative flex h-[92px] w-24 shrink-0 flex-col items-start justify-between rounded-[20px] border-2 p-3',
+                      active ? 'border-volt bg-turf-2' : 'border-transparent bg-turf-1'
+                    )}
+                  >
+                    <LeagueFlag league={(league.id ?? 'all') as LeagueKey} variant="tile" />
+                    <span className="text-left text-[13px] font-semibold leading-tight">{league.name}</span>
+                    {active && (
+                      <span className="pop absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-volt">
+                        <Check className="h-[11px] w-[11px] text-ink" strokeWidth={3.5} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="relative flex flex-col gap-2.5">
+            <span className="cond text-[11px] text-label">Difficoltà</span>
+            <DifficultySelector options={DIFFICULTY_OPTIONS} value={selectedDifficulty} onChange={setSelectedDifficulty} />
+          </section>
+
+          <div className="flex-1" />
+
+          <div className="relative flex gap-2.5">
+            {gameMode === 'pvp' && user && (
+              <Button
+                variant="icon-neutral"
+                onClick={handleCreateChallenge}
+                disabled={creatingChallenge}
+                aria-label="Sfida un amico"
+                className="h-[60px] w-[60px] shrink-0 rounded-[20px] border border-white/12 bg-turf-1 text-chalk"
+              >
+                {creatingChallenge ? <Loader2 className="h-[22px] w-[22px] animate-spin" /> : <Send className="h-[22px] w-[22px]" strokeWidth={2.2} />}
+              </Button>
+            )}
+            <Button
+              variant="volt"
+              onClick={findMatch}
+              withArrow={<ArrowRight className="h-5 w-5" strokeWidth={2.4} />}
+              className="cta-glow h-[60px] flex-1 rounded-[20px] text-[17px]"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Send className="text-purple-400 w-5 h-5" />
-                  Sfida Creata!
-                </h2>
-                <button
-                  onClick={handleCloseChallengeModal}
-                  className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5 text-zinc-400" />
-                </button>
-              </div>
+              {gameMode === 'ai' ? "Gioca contro l'IA" : 'Cerca avversario'}
+            </Button>
+          </div>
+        </>
+      )}
 
-              <p className="text-zinc-400 mb-4">
-                Condividi questo link con un amico per sfidarlo:
-              </p>
-
-              <div className="flex gap-2 mb-6">
-                <input
-                  type="text"
-                  value={`${window.location.origin}/sfida/${challengeToken}`}
-                  readOnly
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
-                />
-                <button
-                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}/sfida/${challengeToken}`)}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold transition-colors"
-                >
-                  Copia
-                </button>
-              </div>
-
-              <p className="text-purple-300 text-sm text-center mt-4">
-                Attendi che un avversario accetti. Verrai reindirizzato automaticamente.
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <BottomSheet open={showChallengeModal && !!challengeToken} onClose={handleCloseChallengeModal}>
+        <div className="flex flex-col gap-4 px-6 pb-8 pt-2">
+          <div className="flex items-center justify-between">
+            <h2 className="disp flex items-center gap-2 text-xl">
+              <Send className="h-5 w-5 text-volt" />
+              Sfida creata!
+            </h2>
+            <button type="button" onClick={handleCloseChallengeModal} aria-label="Chiudi" className="text-chalk-2">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="text-sm text-chalk-2">Condividi questo link con un amico per sfidarlo:</p>
+          <Field
+            readOnly
+            value={challengeLink}
+            suffix={
+              <Button variant="volt" size="sm" onClick={() => navigator.clipboard.writeText(challengeLink)}>
+                Copia
+              </Button>
+            }
+          />
+          <p className="mono text-center text-xs text-chalk-2">
+            Attendi che un avversario accetti. Verrai reindirizzato automaticamente.
+          </p>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

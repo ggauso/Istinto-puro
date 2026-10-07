@@ -4,242 +4,278 @@
  * Schermata per visualizzare la classifica globale
  */
 
-import { useState, useEffect } from 'react'
-import { getLeaderboard, getWeeklyLeaderboard, getMonthlyLeaderboard, getFriendsLeaderboard, getHardModeLeaderboard, getUserRank } from '../lib/api/leaderboard'
-import { TierBadge } from './TierBadge'
-import { Tier, formatNumber, sortLeaderboard } from '../lib/game-utils'
-import { motion } from 'motion/react'
-import { Trophy, Medal, Crown, ArrowLeft, ChevronDown, RefreshCw, Users, Flame } from 'lucide-react'
+import { useState, useEffect } from 'react';
+import {
+  getLeaderboard,
+  getWeeklyLeaderboard,
+  getMonthlyLeaderboard,
+  getFriendsLeaderboard,
+  getHardModeLeaderboard,
+  getUserRank,
+} from '../lib/api/leaderboard';
+import { useAuthStore } from '../authStore';
+import { sortLeaderboard } from '../lib/game-utils';
+import type { LeaderboardEntry } from '../types/game';
+import { Chip } from './ui/Chip';
+import { Button } from './ui/Button';
+import { EmptyState } from './ui/EmptyState';
+import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
+import { RefreshCw, Users, Flame, Trophy } from 'lucide-react';
+import { cn } from '../lib/cn';
 
-type LeaderboardType = 'all_time' | 'weekly' | 'monthly' | 'friends' | 'hard'
+type LeaderboardType = 'all_time' | 'weekly' | 'monthly' | 'friends' | 'hard';
+
+const FILTERS: { id: LeaderboardType; label: string; hard?: boolean }[] = [
+  { id: 'all_time', label: 'Sempre' },
+  { id: 'weekly', label: 'Settimana' },
+  { id: 'monthly', label: 'Mese' },
+  { id: 'friends', label: 'Amici' },
+  { id: 'hard', label: 'Hard', hard: true },
+];
 
 interface LeaderboardScreenProps {
   onBack: () => void;
 }
 
+const PODIUM_RING = {
+  gold: 'var(--tier-gold-label)',
+  silver: 'var(--tier-silver-label)',
+  bronze: 'var(--tier-bronze-label)',
+} as const;
+
+// Alcuni account seed/legacy hanno `displayName` vuoto (nickname mai impostato):
+// senza fallback la riga/colonna risulterebbe visibilmente rotta (iniziali e
+// nome mancanti, solo il punteggio visibile).
+function displayNameOf(entry: LeaderboardEntry): string {
+  return entry.displayName || 'Giocatore';
+}
+
+interface PodiumColumnProps {
+  entry: LeaderboardEntry;
+  place: 'gold' | 'silver' | 'bronze';
+  isCurrentUser: boolean;
+}
+
+/** Una colonna del podio (1 dei 3 posti): avatar con anello colorato per posizione (non per tier del giocatore), barra che cresce con l'esatto stagger di `classifica.html`. */
+function PodiumColumn({ entry, place, isCurrentUser }: PodiumColumnProps) {
+  const ring = PODIUM_RING[place];
+  const sizes = {
+    gold: { avatar: 60, bar: 128, num: 44 },
+    silver: { avatar: 52, bar: 96, num: 36 },
+    bronze: { avatar: 52, bar: 72, num: 32 },
+  }[place];
+  const barClass = { gold: 'podium-gold', silver: 'podium-silver', bronze: 'podium-bronze' }[place];
+  const isGold = place === 'gold';
+
+  return (
+    <div className={cn('flex flex-col items-center gap-2', isGold && 'justify-self-stretch')}>
+      {isGold && (
+        <svg width="28" height="22" viewBox="0 0 28 22" fill="var(--tier-gold-label)" className="crown" aria-hidden="true">
+          <path d="M2 6l6 6 6-10 6 10 6-6-2 14H4z" />
+        </svg>
+      )}
+      <div
+        className={cn(
+          'flex items-center justify-center rounded-full font-extrabold',
+          isCurrentUser ? 'bg-volt text-ink' : 'bg-turf-3 text-chalk'
+        )}
+        style={{
+          width: sizes.avatar,
+          height: sizes.avatar,
+          fontSize: sizes.avatar * 0.28,
+          boxShadow: `0 0 0 3px var(--color-ink), 0 0 0 5px ${ring}`,
+        }}
+      >
+        {displayNameOf(entry).slice(0, 2).toUpperCase()}
+      </div>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="max-w-[88px] truncate text-[13px] font-semibold">{displayNameOf(entry)}</span>
+        <span className="mono text-xs text-chalk-2">{entry.totalScore}</span>
+      </div>
+      <div
+        className={cn('flex w-full flex-col items-center justify-start rounded-[18px_18px_6px_6px] pt-2.5', barClass)}
+        style={{ height: sizes.bar, background: isGold ? 'var(--color-volt)' : 'var(--color-turf-2)' }}
+      >
+        <span
+          className="disp"
+          style={{ fontSize: sizes.num, color: isGold ? 'var(--color-ink)' : ring }}
+        >
+          {place === 'gold' ? 1 : place === 'silver' ? 2 : 3}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
-  const [loading, setLoading] = useState(true)
-  const [entries, setEntries] = useState<any[]>([])
-  const [userRank, setUserRank] = useState<number | null>(null)
-  const [leaderboardType, setLeaderboardType] = useState<LeaderboardType>('all_time')
-  const [showFilters, setShowFilters] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { user, profile } = useAuthStore();
+  const [loading, setLoading] = useState(true);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [userRank, setUserRank] = useState<number | null>(null);
+  const [leaderboardType, setLeaderboardType] = useState<LeaderboardType>('all_time');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadLeaderboard()
-  }, [leaderboardType])
+    loadLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaderboardType]);
 
   async function loadLeaderboard() {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
-      let result
+      let result;
 
-      // Seleziona la funzione corretta in base al tipo di classifica
       switch (leaderboardType) {
         case 'weekly':
-          result = await getWeeklyLeaderboard(50)
-          break
+          result = await getWeeklyLeaderboard(50);
+          break;
         case 'monthly':
-          result = await getMonthlyLeaderboard(50)
-          break
+          result = await getMonthlyLeaderboard(50);
+          break;
         case 'friends':
-          result = await getFriendsLeaderboard(50)
-          break
+          result = await getFriendsLeaderboard(50);
+          break;
         case 'hard':
-          result = await getHardModeLeaderboard(50)
-          break
+          result = await getHardModeLeaderboard(50);
+          break;
         default:
-          result = await getLeaderboard(50, null)
+          result = await getLeaderboard(50, null);
       }
 
       if (result.success) {
-        const sorted = sortLeaderboard(result.entries)
-        setEntries(sorted)
+        const sorted = sortLeaderboard(result.entries);
+        setEntries(sorted);
 
         // Per la classifica all-time mostriamo il rank
         if (leaderboardType === 'all_time') {
-          const rankResult = await getUserRank()
+          const rankResult = await getUserRank();
           if (rankResult.success && rankResult.rank) {
-            setUserRank(rankResult.rank)
+            setUserRank(rankResult.rank);
           }
         } else {
-          setUserRank(null) // Non mostriamo rank per classifiche temporanee
+          setUserRank(null); // Non mostriamo rank per classifiche temporanee
         }
       } else {
-        setError(result.error || 'Errore nel caricamento')
+        setError(result.error || 'Errore nel caricamento');
       }
     } catch (err) {
-      setError('Impossibile caricare la classifica')
+      setError('Impossibile caricare la classifica');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
-  function getRankStyle(rank: number) {
-    switch (rank) {
-      case 1: return 'from-yellow-400/20 to-yellow-600/10 border-yellow-500/50'
-      case 2: return 'from-gray-300/20 to-gray-500/10 border-gray-400/50'
-      case 3: return 'from-amber-600/20 to-amber-800/10 border-amber-600/50'
-      default: return 'bg-zinc-900/50 border-zinc-800'
-    }
-  }
-
-  function getRankBadge(rank: number) {
-    switch (rank) {
-      case 1: return <Crown className="w-6 h-6 text-yellow-400" />
-      case 2: return <Medal className="w-5 h-5 text-gray-300" />
-      case 3: return <Medal className="w-5 h-5 text-amber-600" />
-      default: return <span className="text-zinc-500 font-mono w-6 text-center">{rank}</span>
-    }
-  }
+  const podium = entries.slice(0, 3);
+  const rest = entries.slice(3);
+  const leader = entries[0];
+  const gapToLeader = leader && profile ? Math.max(0, leader.totalScore - profile.total_score) : null;
 
   return (
-    <div className="min-h-screen bg-[#121212] text-white">
-      {/* Header */}
-      <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-sm border-b border-zinc-800 z-10 px-4 py-4">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
-          <button
-            onClick={onBack}
-            className="p-2 -ml-2 hover:bg-zinc-800 rounded-full transition-colors"
+    <div className="relative flex min-h-screen flex-col gap-4 overflow-hidden bg-ink px-4 pb-[220px] pt-12 text-chalk">
+      <header className="flex items-center justify-between">
+        <h1 className="disp text-[34px]">Classifica</h1>
+        <button
+          type="button"
+          aria-label="Aggiorna"
+          onClick={loadLeaderboard}
+          disabled={loading}
+          className="btn flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-turf-1"
+        >
+          <RefreshCw className={cn('ref h-[18px] w-[18px]', loading && 'animate-spin')} strokeWidth={2} />
+        </button>
+      </header>
+
+      <div className="rail -mx-4 flex gap-1.5 overflow-x-auto px-4">
+        {FILTERS.map((filter) => (
+          <Chip
+            key={filter.id}
+            selected={leaderboardType === filter.id}
+            tone={filter.hard ? 'ember' : 'volt'}
+            onClick={() => setLeaderboardType(filter.id)}
           >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Trophy className="text-[#FFD700] w-5 h-5" />
-            Classifica
-          </h1>
-
-          <button
-            onClick={loadLeaderboard}
-            className="p-2 -mr-2 hover:bg-zinc-800 rounded-full transition-colors"
-            disabled={loading}
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-
-        {/* User Rank Banner */}
-        {userRank && userRank <= 100 && (
-          <div className="max-w-lg mx-auto mt-3 bg-gradient-to-r from-[#FFD700]/20 to-yellow-600/10 border border-[#FFD700]/30 rounded-xl px-4 py-2 flex items-center justify-between">
-            <span className="text-sm text-zinc-300">La tua posizione</span>
-            <span className="text-lg font-bold text-[#FFD700]">#{userRank}</span>
-          </div>
-        )}
+            {filter.hard && <Flame className="mr-1 h-3.5 w-3.5" />}
+            {filter.label}
+          </Chip>
+        ))}
       </div>
 
-      {/* Content */}
-      <div className="max-w-lg mx-auto px-4 py-4">
-        {/* Time Filter */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {[
-            { id: 'all_time', label: 'Tutti' },
-            { id: 'weekly', label: 'Settimana' },
-            { id: 'monthly', label: 'Mese' },
-            { id: 'friends', label: 'Amici' },
-            { id: 'hard', label: 'Hard', hard: true },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setLeaderboardType(tab.id as LeaderboardType)}
-              className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1 ${
-                leaderboardType === tab.id
-                  ? tab.hard ? 'bg-red-600 text-white' : 'bg-[#FFD700] text-black'
-                  : tab.hard ? 'bg-zinc-900 text-red-500 hover:text-red-400' : 'bg-zinc-900 text-zinc-400 hover:text-white'
-              }`}
-            >
-              {tab.hard && <Flame className="w-3.5 h-3.5" />}
-              {tab.label}
-            </button>
-          ))}
+      {loading && entries.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <BallBounceLoader />
         </div>
+      ) : error ? (
+        <div className="py-16 text-center">
+          <p className="mb-4 text-sm text-ember-light">{error}</p>
+          <Button variant="ghost" onClick={loadLeaderboard}>
+            Riprova
+          </Button>
+        </div>
+      ) : entries.length === 0 ? (
+        <EmptyState
+          icon={leaderboardType === 'friends' ? <Users className="h-6 w-6" /> : leaderboardType === 'hard' ? <Flame className="h-6 w-6" /> : <Trophy className="h-6 w-6" />}
+          title={
+            leaderboardType === 'friends'
+              ? 'Nessun amico in classifica'
+              : leaderboardType === 'hard'
+                ? 'Nessuno in classifica hard'
+                : 'Nessun utente in classifica'
+          }
+          subtitle={
+            leaderboardType === 'friends'
+              ? 'Aggiungi amici dal tuo profilo per vederli qui!'
+              : leaderboardType === 'hard'
+                ? 'Gioca in modalità Hard per entrare!'
+                : 'Completa delle partite per entrare!'
+          }
+        />
+      ) : (
+        <>
+          {podium.length === 3 && (
+            <section className="grid h-[250px] grid-cols-[1fr_1.1fr_1fr] items-end gap-2">
+              <PodiumColumn entry={podium[1]} place="silver" isCurrentUser={podium[1].userId === user?.id} />
+              <PodiumColumn entry={podium[0]} place="gold" isCurrentUser={podium[0].userId === user?.id} />
+              <PodiumColumn entry={podium[2]} place="bronze" isCurrentUser={podium[2].userId === user?.id} />
+            </section>
+          )}
 
-        {loading && entries.length === 0 ? (
-          <div className="flex justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#FFD700]" />
-          </div>
-        ) : error ? (
-          <div className="text-center py-20">
-            <p className="text-red-400 mb-4">{error}</p>
-            <button
-              onClick={loadLeaderboard}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg"
-            >
-              Riprova
-            </button>
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="text-center py-20 text-zinc-500">
-            {leaderboardType === 'friends' ? (
-              <>
-                <Users className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <p>Nessun amico in classifica</p>
-                <p className="text-sm mt-2">Aggiungi amici dal tuo profilo per vederli qui!</p>
-              </>
-            ) : leaderboardType === 'hard' ? (
-              <>
-                <Flame className="w-16 h-16 mx-auto mb-4 opacity-30 text-red-500" />
-                <p>Nessuno in classifica hard</p>
-                <p className="text-sm mt-2">Gioca in modalità Hard per entrare!</p>
-              </>
-            ) : (
-              <>
-                <Trophy className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <p>Nessun utente in classifica</p>
-                <p className="text-sm mt-2">Completa delle partite per entrare!</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {entries.map((entry, index) => (
-              <motion.div
+          <div className="flex flex-col gap-1.5">
+            {(podium.length === 3 ? rest : entries).map((entry, index) => (
+              <div
                 key={entry.userId}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className={`
-                  flex items-center gap-3 p-3 rounded-xl border
-                  ${getRankStyle(entry.rank)}
-                `}
+                className="row-hover row-in flex h-14 items-center gap-3 rounded-np-lg bg-turf-1 px-3.5"
+                style={{ animationDelay: `${0.05 + index * 0.04}s` }}
               >
-                {/* Rank */}
-                <div className="w-8 flex justify-center">
-                  {getRankBadge(entry.rank)}
+                <span className="mono w-6 text-[13px] text-label">{entry.rank}</span>
+                <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-turf-3 text-xs font-bold">
+                  {displayNameOf(entry).slice(0, 2).toUpperCase()}
                 </div>
-
-                {/* Player Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold truncate">{entry.displayName}</span>
-                    {entry.rank <= 3 && (
-                      <span className="text-xs">{entry.rank === 1 ? '👑' : '⭐'}</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-zinc-500 flex items-center gap-2">
-                    <span>{entry.matchesPlayed} partite</span>
-                    <span>•</span>
-                    <span>{entry.winRate}% vince</span>
-                  </div>
+                <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
+                  <span className="truncate text-sm font-semibold">{displayNameOf(entry)}</span>
+                  <span className="mono text-[11px] text-label">{entry.matchesPlayed} partite</span>
                 </div>
-
-                {/* Tier & Score */}
-                <div className="flex items-center gap-3">
-                  <TierBadge tier={entry.tier} size="sm" showLabel={false} />
-                  <div className="text-right">
-                    <div className="font-bold text-white">{formatNumber(entry.totalScore)}</div>
-                    <div className="text-xs text-zinc-500">pts</div>
-                  </div>
-                </div>
-              </motion.div>
+                <span className="mono text-[15px] font-semibold text-chalk-2">{entry.totalScore}</span>
+              </div>
             ))}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {userRank && userRank <= 100 && (
+        <div className="shadow-np-sheet fixed bottom-[104px] left-4 right-4 z-30 flex h-[60px] items-center gap-3 rounded-np-xl bg-turf-2 px-3.5" style={{ boxShadow: '0 0 0 1.5px var(--color-volt), 0 16px 40px -10px rgba(0,0,0,.9)' }}>
+          <span className="disp w-[34px] text-xl text-volt">#{userRank}</span>
+          <div className="flex flex-1 flex-col gap-0.5">
+            <span className="text-sm font-semibold">La tua posizione</span>
+            <span className="mono text-[11px] text-chalk-2">
+              {userRank === 1 ? 'Sei primo in classifica' : gapToLeader !== null ? `${gapToLeader} pt dal primo` : ''}
+            </span>
+          </div>
+          <span className="mono text-lg font-semibold">{profile?.total_score ?? 0}</span>
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
-export default LeaderboardScreen
+export default LeaderboardScreen;
