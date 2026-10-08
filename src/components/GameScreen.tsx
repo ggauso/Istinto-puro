@@ -11,6 +11,7 @@ import { Field } from './ui/Field';
 import { LEAGUE_NAMES, type LeagueKey } from './ui/LeagueFlag';
 import { Button } from './ui/Button';
 import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
+import { ScoreboardLoader } from './ui/loaders/ScoreboardLoader';
 import { AlertDialog } from './ui/AlertDialog';
 import { AlertIconBadge } from './ui/AlertIconBadge';
 import { motion } from 'motion/react';
@@ -500,7 +501,11 @@ export function GameScreen() {
             <Check className="h-4 w-4" strokeWidth={3} />
             Corretto!
           </span>
-          <span className="mono text-xl font-semibold text-volt">+{lastScoreAdded} pt</span>
+          <div key={round} className="mono flex items-center gap-1 text-volt">
+            <span className="text-xl font-semibold">+</span>
+            <ScoreboardLoader value={lastScoreAdded} />
+            <span className="text-xl font-semibold">pt</span>
+          </div>
           <div className="mono flex gap-4 text-xs text-chalk-2">
             <span>Rarità x{lastRarity}</span>
             <span>Combo x{lastCombo}</span>

@@ -2,16 +2,22 @@ import { useState } from 'react';
 import { useAuthStore } from '../authStore';
 import { useTournaments } from './tournament/useTournaments';
 import { TournamentListView, TournamentCreateForm, TournamentDetailView, TournamentHistoryView } from './tournament/TournamentViews';
-import { ConfirmDialog } from './profile/ConfirmDialog';
-import { ArrowLeft, Trophy, History } from 'lucide-react';
+import { AlertDialog } from './ui/AlertDialog';
+import { AlertIconBadge } from './ui/AlertIconBadge';
+import { Button } from './ui/Button';
+import { SegmentedControl } from './ui/SegmentedControl';
+import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
 interface TournamentsScreenProps {
   onBack: () => void;
 }
 
+type MainTab = 'open' | 'history';
+
 export function TournamentsScreen({ onBack }: TournamentsScreenProps) {
   const { user } = useAuthStore();
-  const [mainTab, setMainTab] = useState<'open' | 'history'>('open');
+  const [mainTab, setMainTab] = useState<MainTab>('open');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; name: string } | null>(null);
 
@@ -25,119 +31,125 @@ export function TournamentsScreen({ onBack }: TournamentsScreenProps) {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]"></div>
+      <div className="flex min-h-screen items-center justify-center bg-ink">
+        <BallBounceLoader />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#121212] text-white p-4 md:p-8">
-      <div className="max-w-2xl mx-auto">
-        <header className="flex items-center justify-between mb-8">
-          <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span>Torna alla Home</span>
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-[#FFD700]" />
-            Tornei
-          </h1>
-        </header>
+  const showSubHeader = showCreateForm || !!tournamentDetail;
+  const subHeaderTitle = tournamentDetail ? tournamentDetail.tournament.name : 'Nuovo torneo';
 
-        {tournamentDetail ? (
-          loadingDetail ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#FFD700]"></div>
-            </div>
-          ) : (
-            <TournamentDetailView
-              detail={tournamentDetail}
-              currentUserId={user.id}
-              joining={joining}
-              onJoin={async () => {
-                if (tournamentDetail) await handleJoin(tournamentDetail.tournament.id);
-              }}
-              onLeave={async () => {
-                if (tournamentDetail) await handleLeave(tournamentDetail.tournament.id);
-              }}
-              onCancel={() => {
-                if (tournamentDetail) setConfirmCancel({ id: tournamentDetail.tournament.id, name: tournamentDetail.tournament.name });
-              }}
-              onBack={closeDetail}
-            />
-          )
+  const handleSubBack = () => {
+    if (tournamentDetail) {
+      closeDetail();
+    } else {
+      setShowCreateForm(false);
+      setError(null);
+    }
+  };
+
+  return (
+    <div className="relative flex min-h-screen flex-col gap-4 overflow-hidden bg-ink px-4 pb-[140px] pt-12 text-chalk">
+      <header className="flex items-center gap-3">
+        {showSubHeader ? (
+          <>
+            <button
+              type="button"
+              onClick={handleSubBack}
+              aria-label="Indietro"
+              className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-turf-1"
+            >
+              <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.2} />
+            </button>
+            <h1 className="disp min-w-0 flex-1 truncate text-[28px]">{subHeaderTitle}</h1>
+          </>
         ) : (
           <>
-            <div className="flex gap-2 mb-6">
-              <button
-                onClick={() => setMainTab('open')}
-                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-                  mainTab === 'open' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Trophy className="w-4 h-4 inline mr-2" />
-                Disponibili
-              </button>
-              <button
-                onClick={() => setMainTab('history')}
-                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-                  mainTab === 'history' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <History className="w-4 h-4 inline mr-2" />
-                Storico
-              </button>
-            </div>
-
-            {mainTab === 'open' && (
-              showCreateForm ? (
-                <TournamentCreateForm
-                  creating={creating}
-                  error={error}
-                  onCancel={() => { setShowCreateForm(false); setError(null); }}
-                  onSubmit={async (name, maxPlayers, league, difficulty, startMode, scheduledAt) => {
-                    await handleCreate(name, maxPlayers, league, difficulty, startMode, scheduledAt);
-                    setShowCreateForm(false);
-                  }}
-                />
-              ) : (
-                <TournamentListView
-                  tournaments={openTournaments}
-                  loading={loadingOpen}
-                  joining={joining}
-                  currentUserId={user.id}
-                  onJoin={(id) => handleJoin(id)}
-                  onOpenDetail={(id) => loadTournamentDetail(id)}
-                  onCancel={(id) => {
-                    const t = openTournaments.find((o) => o.id === id);
-                    setConfirmCancel({ id, name: t?.name || 'questo torneo' });
-                  }}
-                  onCreateClick={() => setShowCreateForm(true)}
-                />
-              )
-            )}
-
-            {mainTab === 'history' && (
-              <TournamentHistoryView history={history} loading={loadingHistory} />
-            )}
+            <h1 className="disp flex-1 text-[34px]">Tornei</h1>
+            <SegmentedControl
+              options={[
+                { value: 'open', label: 'Aperti' },
+                { value: 'history', label: 'Storico' },
+              ]}
+              value={mainTab}
+              onChange={(v) => setMainTab(v as MainTab)}
+            />
           </>
         )}
-      </div>
+      </header>
 
-      {confirmCancel && (
-        <ConfirmDialog
-          title="Cancellare il torneo?"
-          message={`"${confirmCancel.name}" verrà cancellato per tutti gli iscritti. L'operazione non è reversibile.`}
-          confirmLabel="Cancella torneo"
-          onCancel={() => setConfirmCancel(null)}
-          onConfirm={async () => {
-            const id = confirmCancel.id;
-            setConfirmCancel(null);
-            await handleCancel(id);
+      {tournamentDetail ? (
+        loadingDetail ? (
+          <div className="flex justify-center py-12">
+            <BallBounceLoader />
+          </div>
+        ) : (
+          <TournamentDetailView
+            detail={tournamentDetail}
+            currentUserId={user.id}
+            joining={joining}
+            onJoin={async () => {
+              await handleJoin(tournamentDetail.tournament.id);
+            }}
+            onLeave={async () => {
+              await handleLeave(tournamentDetail.tournament.id);
+            }}
+            onCancel={() => setConfirmCancel({ id: tournamentDetail.tournament.id, name: tournamentDetail.tournament.name })}
+          />
+        )
+      ) : showCreateForm ? (
+        <TournamentCreateForm
+          creating={creating}
+          error={error}
+          onSubmit={async (name, maxPlayers, league, difficulty, startMode, scheduledAt) => {
+            await handleCreate(name, maxPlayers, league, difficulty, startMode, scheduledAt);
+            setShowCreateForm(false);
           }}
         />
+      ) : mainTab === 'open' ? (
+        <TournamentListView
+          tournaments={openTournaments}
+          loading={loadingOpen}
+          joining={joining}
+          currentUserId={user.id}
+          onJoin={(id) => handleJoin(id)}
+          onOpenDetail={(id) => loadTournamentDetail(id)}
+          onCancel={(id) => {
+            const t = openTournaments.find((o) => o.id === id);
+            setConfirmCancel({ id, name: t?.name || 'questo torneo' });
+          }}
+          onCreateClick={() => setShowCreateForm(true)}
+        />
+      ) : (
+        <TournamentHistoryView history={history} loading={loadingHistory} />
       )}
+
+      <AlertDialog
+        open={!!confirmCancel}
+        onClose={() => setConfirmCancel(null)}
+        icon={<AlertIconBadge icon={<Trash2 className="h-[26px] w-[26px]" strokeWidth={2.2} />} wobble />}
+        title="Cancellare il torneo?"
+        description={confirmCancel ? `"${confirmCancel.name}" verrà cancellato per tutti gli iscritti. L'operazione non è reversibile.` : ''}
+        actions={
+          <>
+            <Button variant="chalk" onClick={() => setConfirmCancel(null)}>
+              Annulla
+            </Button>
+            <Button
+              variant="text-ember"
+              onClick={async () => {
+                if (!confirmCancel) return;
+                const id = confirmCancel.id;
+                setConfirmCancel(null);
+                await handleCancel(id);
+              }}
+            >
+              Cancella torneo
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

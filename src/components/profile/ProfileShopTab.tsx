@@ -1,20 +1,33 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../authStore';
 import { getShopCatalog, purchaseShopItem, setActiveTheme, type ShopItem } from '../../lib/api/shop';
-import { Coins, Loader2, Check, Palette } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Coins, Check, ChevronLeft } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { BallBounceLoader } from '../ui/loaders/BallBounceLoader';
+import { cn } from '../../lib/cn';
 
 const CATEGORY_LABELS: Record<ShopItem['category'], string> = {
-  badge: 'Badge Cosmetici',
-  theme: 'Temi Colore Profilo',
+  badge: 'Badge accanto al nickname',
+  theme: 'Temi colore del profilo',
 };
 
-export function ProfileShopTab() {
+export interface ProfileShopTabProps {
+  onBack: () => void;
+}
+
+/**
+ * Shop — schermata a sé stante (replica di `shop.html`), raggiunta
+ * toccando la pill monete nell'header del Profilo, non una tab. Aggiunta
+ * rispetto al codice precedente: anteprima con selezione (tocchi una
+ * card per vederla in anteprima, l'azione — acquista/attiva — si fa dalla
+ * card "Anteprima" in alto, non più un bottone per ogni singola card).
+ */
+export function ProfileShopTab({ onBack }: ProfileShopTabProps) {
   const { user, profile, fetchProfile } = useAuthStore();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingCode, setPendingCode] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ code: string; message: string; isError: boolean } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
 
   const load = () => {
     if (!user) return;
@@ -33,132 +46,147 @@ export function ProfileShopTab() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-ink">
+        <BallBounceLoader />
       </div>
     );
   }
 
   const coins = profile.coins || 0;
+  const previewItem = items.find((i) => i.code === previewCode) ?? null;
+  const canAfford = previewItem ? coins >= previewItem.cost : true;
+  const isOwned = previewItem?.owned ?? false;
+  const isActiveTheme = previewItem?.category === 'theme' && profile.theme_color === previewItem.colorHex;
 
-  async function handlePurchase(item: ShopItem) {
-    setPendingCode(item.code);
-    setFeedback(null);
-    const result = await purchaseShopItem(user!.id, item.code);
-    if (result.success) {
-      setFeedback({ code: item.code, message: 'Acquistato!', isError: false });
-      await fetchProfile(user!.id);
-      load();
-    } else {
-      setFeedback({ code: item.code, message: result.message || result.error || 'Errore', isError: true });
+  async function handleAction() {
+    if (!previewItem || !user) return;
+    setPending(true);
+    if (previewItem.category === 'theme' && previewItem.owned) {
+      const ok = await setActiveTheme(user.id, previewItem.code);
+      if (ok) await fetchProfile(user.id);
+    } else if (!previewItem.owned) {
+      const result = await purchaseShopItem(user.id, previewItem.code);
+      if (result.success) {
+        await fetchProfile(user.id);
+        load();
+      }
     }
-    setPendingCode(null);
+    setPending(false);
   }
 
-  async function handleActivateTheme(item: ShopItem) {
-    setPendingCode(item.code);
-    const ok = await setActiveTheme(user!.id, item.code);
-    if (ok) {
-      setFeedback({ code: item.code, message: 'Tema attivato!', isError: false });
-      await fetchProfile(user!.id);
-    } else {
-      setFeedback({ code: item.code, message: 'Errore attivazione tema', isError: true });
-    }
-    setPendingCode(null);
-  }
+  const byCategory = (['badge', 'theme'] as const)
+    .map((category) => ({ category, items: items.filter((i) => i.category === category) }))
+    .filter((group) => group.items.length > 0);
 
-  const byCategory = (['badge', 'theme'] as const).map((category) => ({
-    category,
-    items: items.filter((i) => i.category === category),
-  })).filter((group) => group.items.length > 0);
+  const previewRing = previewItem?.category === 'theme' && previewItem.colorHex
+    ? previewItem.colorHex
+    : 'conic-gradient(from 180deg, var(--color-volt) 0 50%, var(--color-turf-3) 50%)';
+  const previewNameColor = previewItem?.category === 'theme' ? previewItem.colorHex ?? undefined : undefined;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between bg-zinc-800/50 rounded-xl px-4 py-3">
-        <span className="text-zinc-300 text-sm font-medium flex items-center gap-2">
-          <Coins className="w-5 h-5 text-yellow-400" />
-          Il tuo saldo
+    <div className="relative flex min-h-screen flex-col gap-4 bg-ink px-4 pb-10 pt-12 text-chalk">
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button type="button" aria-label="Indietro" onClick={onBack} className="btn flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-turf-1">
+            <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.2} />
+          </button>
+          <h1 className="disp text-[30px]">Shop</h1>
+        </div>
+        <span className="mono flex h-11 items-center gap-2 rounded-np-pill bg-[rgba(242,193,78,.12)] py-0 pl-2 pr-3.5 text-lg font-bold text-[#FFD36E]">
+          <span className="coin flex h-7 w-7 items-center justify-center rounded-full text-ink" style={{ background: 'linear-gradient(135deg,#FFE08A,#C4901C)' }}>
+            <Coins className="h-3.5 w-3.5" />
+          </span>
+          {coins}
         </span>
-        <span className="text-white font-bold text-lg">{coins}</span>
-      </div>
+      </header>
+
+      <section className="flex flex-col gap-3.5 rounded-np-hero border border-white/7 bg-turf-1 p-[18px]">
+        <span className="cond text-xs text-label">Anteprima</span>
+        <div className="flex items-center gap-3.5">
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px_20px_20px_6px] p-[3px]" style={{ background: previewRing }}>
+            <span className="disp flex h-full w-full items-center justify-center rounded-[17px_17px_17px_4px] border-[3px] border-turf-1 bg-turf-2 text-base">
+              {(profile.nickname || profile.first_name || 'TU').slice(0, 2).toUpperCase()}
+            </span>
+          </span>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="disp text-[22px]" style={{ fontStretch: '105%', color: previewNameColor }}>
+                {profile.nickname || profile.first_name || 'Tu'}
+              </span>
+              {previewItem?.category === 'badge' && <span className="pop text-lg leading-none">{previewItem.icon}</span>}
+            </div>
+            <span className="text-[13px] text-chalk-2">
+              {previewItem ? `${previewItem.category === 'badge' ? 'Badge' : 'Tema'} ${previewItem.label}` : 'Nessuna selezione'}
+            </span>
+          </div>
+        </div>
+        {previewItem && (
+          <Button
+            variant={isOwned && !isActiveTheme ? 'volt' : isActiveTheme ? 'chalk' : canAfford ? 'volt' : 'ghost'}
+            disabled={pending || isActiveTheme || (!isOwned && !canAfford)}
+            loading={pending}
+            onClick={handleAction}
+          >
+            {isActiveTheme ? (
+              <>
+                <Check className="h-4 w-4" /> Attivo
+              </>
+            ) : isOwned ? (
+              previewItem.category === 'theme' ? (
+                'Attiva'
+              ) : (
+                'Posseduto'
+              )
+            ) : canAfford ? (
+              <>
+                <Coins className="h-4 w-4" /> Acquista per {previewItem.cost}
+              </>
+            ) : (
+              <>
+                Ti mancano <span className="mono text-[#FFD36E]">{previewItem.cost - coins}</span> monete
+              </>
+            )}
+          </Button>
+        )}
+      </section>
 
       {byCategory.map((group) => (
-        <div key={group.category} className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            {CATEGORY_LABELS[group.category]}
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {group.items.map((item, index) => {
-              const isActiveTheme = item.category === 'theme' && profile.theme_color === item.colorHex;
-              const canAfford = coins >= item.cost;
-              const isPending = pendingCode === item.code;
-              const itemFeedback = feedback?.code === item.code ? feedback : null;
-
+        <section key={group.category} className="flex flex-col gap-2.5">
+          <span className="cond text-xs text-label">{CATEGORY_LABELS[group.category]}</span>
+          <div className="grid grid-cols-3 gap-2">
+            {group.items.map((item) => {
+              const selected = previewCode === item.code;
               return (
-                <motion.div
+                <button
                   key={item.code}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className={`relative rounded-xl p-4 border flex flex-col items-center text-center gap-2 ${
-                    item.owned
-                      ? 'bg-gradient-to-br from-zinc-800/60 to-zinc-900/60 border-green-500/30'
-                      : 'bg-zinc-800/40 border-zinc-700/50'
-                  }`}
+                  type="button"
+                  onClick={() => setPreviewCode(item.code)}
+                  className={cn(
+                    'item flex h-[118px] flex-col items-center justify-center gap-2 rounded-np-lg border-[1.5px]',
+                    selected ? 'border-volt bg-volt/[.06]' : 'border-white/7 bg-turf-1'
+                  )}
                 >
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
-                    style={item.category === 'theme' && item.colorHex ? { backgroundColor: `${item.colorHex}33`, border: `1px solid ${item.colorHex}` } : undefined}
-                  >
-                    {item.category === 'badge' ? item.icon : <Palette className="w-6 h-6" style={{ color: item.colorHex || undefined }} />}
-                  </div>
-                  <div className="font-semibold text-sm text-white">{item.label}</div>
-                  <div className="text-xs text-zinc-500">{item.description}</div>
-
-                  {!item.owned && (
-                    <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold">
-                      <Coins className="w-4 h-4" /> {item.cost}
-                    </div>
-                  )}
-
-                  {item.owned ? (
-                    item.category === 'theme' ? (
-                      <button
-                        onClick={() => handleActivateTheme(item)}
-                        disabled={isPending || isActiveTheme}
-                        className={`mt-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                          isActiveTheme
-                            ? 'bg-green-600/30 text-green-300 cursor-default'
-                            : 'bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50'
-                        }`}
-                      >
-                        {isActiveTheme ? <><Check className="w-3 h-3" /> Attivo</> : isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Attiva'}
-                      </button>
-                    ) : (
-                      <span className="mt-1 text-xs font-bold text-green-400 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Posseduto
-                      </span>
-                    )
+                  {item.category === 'badge' ? (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-np-md bg-turf-2 text-xl">{item.icon}</span>
                   ) : (
-                    <button
-                      onClick={() => handlePurchase(item)}
-                      disabled={isPending || !canAfford}
-                      className="mt-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 hover:bg-yellow-400 text-black transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : canAfford ? 'Acquista' : 'Saldo insufficiente'}
-                    </button>
+                    <span
+                      className="h-11 w-11 rounded-full"
+                      style={{ background: item.colorHex ?? 'var(--color-turf-3)', boxShadow: 'inset 0 0 0 8px var(--color-turf-2)' }}
+                    />
                   )}
-
-                  {itemFeedback && (
-                    <div className={`text-[10px] mt-1 ${itemFeedback.isError ? 'text-red-400' : 'text-green-400'}`}>
-                      {itemFeedback.message}
-                    </div>
+                  <span className="text-[13px] font-semibold">{item.label}</span>
+                  {item.owned ? (
+                    <span className="mono flex items-center gap-1 text-xs font-semibold text-volt">
+                      <Check className="h-3 w-3" /> Posseduto
+                    </span>
+                  ) : (
+                    <span className="mono text-xs font-semibold text-[#FFD36E]">{item.cost}</span>
                   )}
-                </motion.div>
+                </button>
               );
             })}
           </div>
-        </div>
+        </section>
       ))}
     </div>
   );

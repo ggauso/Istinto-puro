@@ -63,7 +63,7 @@ export default function App() {
   const { status, newlyUnlockedAchievements } = useGameStore();
   const { initialize, loading } = useAuthStore();
   const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge' | 'tournaments'>('home');
-  const [profileInitialTab, setProfileInitialTab] = useState<'info' | 'stats' | 'friends' | 'achievements'>('info');
+  const [profileInitialTab, setProfileInitialTab] = useState<'stats' | 'friends' | 'achievements' | 'history'>('stats');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [currentChallengeId, setCurrentChallengeId] = useState<string | null>(null);
@@ -376,7 +376,7 @@ export default function App() {
     sessionStorage.removeItem('userLeftChallenge');
     sessionStorage.removeItem('lastChallengeRoomId');
     setUserLeftChallenge(false);
-    if (key === 'profile') setProfileInitialTab('info');
+    if (key === 'profile') setProfileInitialTab('stats');
     setCurrentScreen(key);
   };
 
@@ -423,7 +423,7 @@ export default function App() {
             sessionStorage.removeItem('userLeftChallenge');
             sessionStorage.removeItem('lastChallengeRoomId');
             setUserLeftChallenge(false);
-            setProfileInitialTab('info');
+            setProfileInitialTab('stats');
             setCurrentScreen('profile');
           }}
         />

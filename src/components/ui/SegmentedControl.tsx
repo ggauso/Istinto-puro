@@ -5,6 +5,8 @@ export interface SegmentedControlOption<T extends string> {
   label: string;
   value: T;
   icon?: ReactNode;
+  /** Pillola numerica accanto alla label (es. conteggio richieste/sfide in sospeso). */
+  badge?: ReactNode;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -70,6 +72,16 @@ export function SegmentedControl<T extends string>({
           >
             {option.icon}
             {option.label}
+            {option.badge && (
+              <span
+                className={cn(
+                  'mono flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px]',
+                  active ? 'bg-ink text-volt' : 'bg-turf-3 text-chalk'
+                )}
+              >
+                {option.badge}
+              </span>
+            )}
           </button>
         );
       })}

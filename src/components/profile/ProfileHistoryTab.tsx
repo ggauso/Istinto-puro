@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../authStore';
 import { getMatchHistory, type MatchHistoryEntry, type MatchHistoryMode, type MatchHistoryResult } from '../../lib/api/match-history';
 import { TierBadge } from '../TierBadge';
-import { Swords, Bot, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Chip } from '../ui/Chip';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { PitchSkeleton } from '../ui/loaders/PitchSkeleton';
+import { ChevronDown, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 
 const PAGE_SIZE = 20;
-
 const DIFFICULTY_LABELS: Record<number, string> = { 1: 'Facile', 2: 'Medio', 3: 'Difficile' };
 
 export function ProfileHistoryTab() {
@@ -46,83 +49,64 @@ export function ProfileHistoryTab() {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between bg-zinc-800/50 rounded-xl px-4 py-3">
-        <span className="text-zinc-300 text-sm font-medium">Partite giocate</span>
-        <span className="text-white font-bold">{totalCount}</span>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <FilterGroup
-          label="Modalità"
-          value={modeFilter}
-          onChange={changeModeFilter}
-          options={[
-            { value: null, label: 'Tutte' },
-            { value: 'pvp', label: 'PvP' },
-            { value: 'ai', label: 'IA' },
-          ]}
-        />
-        <FilterGroup
-          label="Risultato"
-          value={resultFilter}
-          onChange={changeResultFilter}
-          options={[
-            { value: null, label: 'Tutti' },
-            { value: 'win', label: 'Vittorie' },
-            { value: 'loss', label: 'Sconfitte' },
-          ]}
-        />
+    <div className="flex flex-col gap-3.5">
+      <div className="flex flex-wrap gap-1.5">
+        {([
+          { value: null, label: 'Tutte' },
+          { value: 'pvp', label: 'PvP' },
+          { value: 'ai', label: 'IA' },
+        ] as { value: MatchHistoryMode | null; label: string }[]).map((opt) => (
+          <Chip key={String(opt.value)} selected={modeFilter === opt.value} onClick={() => changeModeFilter(opt.value)}>
+            {opt.label}
+          </Chip>
+        ))}
+        <span className="mx-1 w-px self-stretch bg-white/10" />
+        {([
+          { value: null, label: 'Tutti' },
+          { value: 'win', label: 'Vittorie' },
+          { value: 'loss', label: 'Sconfitte' },
+        ] as { value: MatchHistoryResult | null; label: string }[]).map((opt) => (
+          <Chip key={String(opt.value)} selected={resultFilter === opt.value} onClick={() => changeResultFilter(opt.value)}>
+            {opt.label}
+          </Chip>
+        ))}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-        </div>
+        <PitchSkeleton rows={4} rowHeight={56} />
       ) : entries.length === 0 ? (
-        <div className="text-center py-12 text-zinc-500 text-sm">
-          Nessuna partita trovata con questi filtri.
-        </div>
+        <EmptyState icon={<History className="h-6 w-6" />} title="Nessuna partita trovata" subtitle="Prova a cambiare i filtri." />
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-1.5">
           {entries.map((entry) => {
             const isExpanded = expandedId === entry.id;
             return (
-              <motion.div
-                key={entry.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className={`rounded-xl border overflow-hidden ${
-                  entry.is_win ? 'border-green-500/20 bg-green-900/10' : 'border-red-500/20 bg-red-900/10'
-                }`}
-              >
+              <div key={entry.id} className="overflow-hidden rounded-np-lg bg-turf-1">
                 <button
+                  type="button"
                   onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                  className="row-hover flex w-full items-center gap-3 py-2.5 pl-2.5 pr-3.5 text-left"
                 >
-                  {entry.is_pvp ? (
-                    <Swords className="w-5 h-5 text-purple-400 flex-shrink-0" />
-                  ) : (
-                    <Bot className="w-5 h-5 text-zinc-400 flex-shrink-0" />
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-semibold text-sm ${entry.is_win ? 'text-green-400' : 'text-red-400'}`}>
-                        {entry.is_win ? 'Vittoria' : 'Sconfitta'}
-                      </span>
-                      <span className="text-zinc-500 text-xs truncate">vs {entry.opponent_name}</span>
-                    </div>
-                    <div className="text-zinc-500 text-xs">
-                      {new Date(entry.played_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </div>
+                  <span
+                    className={`disp flex h-11 w-11 shrink-0 items-center justify-center rounded-np-md text-lg ${
+                      entry.is_win ? 'bg-volt text-ink' : 'bg-turf-3 text-chalk-2'
+                    }`}
+                  >
+                    {entry.is_win ? 'V' : 'S'}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-sm font-semibold">vs {entry.opponent_name}</span>
+                    <span className="mono truncate text-[11px] text-label">
+                      {new Date(entry.played_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }).toUpperCase()} ·{' '}
+                      {new Date(entry.played_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} · {entry.is_pvp ? 'PvP' : 'IA'}
+                    </span>
                   </div>
-
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-white font-bold text-sm">{entry.player_score} - {entry.opponent_score}</div>
-                  </div>
-
-                  {isExpanded ? <ChevronUp className="w-4 h-4 text-zinc-500 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-zinc-500 flex-shrink-0" />}
+                  <span className="mono text-[15px] font-semibold text-chalk-2">
+                    {entry.player_score}–{entry.opponent_score}
+                  </span>
+                  <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-label" />
+                  </motion.span>
                 </button>
 
                 <AnimatePresence initial={false}>
@@ -131,78 +115,41 @@ export function ProfileHistoryTab() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-wrap items-center gap-4 text-xs"
+                      className="flex flex-wrap items-center gap-3.5 px-3.5 pb-3.5 pt-1 text-xs"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-zinc-500">Il tuo tier:</span>
+                        <span className="text-label">Tu:</span>
                         <TierBadge tier={entry.player_tier} size="sm" />
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-zinc-500">Tier avversario:</span>
+                        <span className="text-label">Avversario:</span>
                         <TierBadge tier={entry.opponent_tier} size="sm" />
                       </div>
-                      <div className="text-zinc-400">
-                        Difficoltà: <span className="text-white">{DIFFICULTY_LABELS[entry.difficulty] || entry.difficulty}</span>
-                      </div>
-                      <div className="text-zinc-400">
-                        Modalità: <span className="text-white">{entry.is_pvp ? 'PvP' : 'Contro IA'}</span>
+                      <div className="text-chalk-2">
+                        Difficoltà: <span className="text-chalk">{DIFFICULTY_LABELS[entry.difficulty] || entry.difficulty}</span>
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
             );
           })}
         </div>
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="p-2 rounded-lg bg-zinc-800 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:text-white transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-zinc-400 text-sm">Pagina {page + 1} di {totalPages}</span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            className="p-2 rounded-lg bg-zinc-800 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:text-white transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <Button variant="icon-neutral" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} aria-label="Pagina precedente">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="mono text-xs text-chalk-2">
+            Pagina {page + 1} di {totalPages}
+          </span>
+          <Button variant="icon-neutral" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} aria-label="Pagina successiva">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-function FilterGroup<T extends string | null>({
-  label, value, onChange, options
-}: {
-  label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: { value: T; label: string }[];
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-zinc-500 text-xs">{label}:</span>
-      <div className="flex gap-1">
-        {options.map((option) => (
-          <button
-            key={String(option.value)}
-            onClick={() => onChange(option.value)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              value === option.value ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

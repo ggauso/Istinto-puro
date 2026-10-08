@@ -1,28 +1,39 @@
 import { useState } from 'react';
 import { useAuthStore } from '../authStore';
+import { calculateTier, TIER_CONFIG } from '../types/game';
 import { useFriendsAndChallenges } from './profile/useFriendsAndChallenges';
-import { ProfileInfoTab } from './profile/ProfileInfoTab';
+import { EditProfileSheet } from './profile/EditProfileSheet';
 import { ProfileStatsTab } from './profile/ProfileStatsTab';
 import { ProfileFriendsTab } from './profile/ProfileFriendsTab';
 import { ProfileAchievementsTab } from './profile/ProfileAchievementsTab';
 import { ProfileHistoryTab } from './profile/ProfileHistoryTab';
 import { ProfileShopTab } from './profile/ProfileShopTab';
-import { ArrowLeft, LogOut, User, Trophy, Users, Award, History, ShoppingBag, UserPlus, CheckCircle, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { SegmentedControl } from './ui/SegmentedControl';
+import { Toast } from './ui/Toast';
+import { Pencil, Coins } from 'lucide-react';
+import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
+
+type ProfileTab = 'stats' | 'achievements' | 'history' | 'friends';
 
 interface ProfileScreenProps {
   onBack: () => void;
-  initialTab?: 'info' | 'stats' | 'friends' | 'achievements' | 'history' | 'shop';
+  initialTab?: ProfileTab;
 }
 
-export function ProfileScreen({ onBack, initialTab = 'info' }: ProfileScreenProps) {
-  const { user, profile, signOut } = useAuthStore();
+const TABS: { value: ProfileTab; label: string }[] = [
+  { value: 'stats', label: 'Stats' },
+  { value: 'achievements', label: 'Trofei' },
+  { value: 'history', label: 'Storico' },
+  { value: 'friends', label: 'Amici' },
+];
 
-  // Main profile tabs: 'info' | 'stats' | 'friends' | 'achievements' | 'history' | 'shop'
-  const [mainTab, setMainTab] = useState<'info' | 'stats' | 'friends' | 'achievements' | 'history' | 'shop'>(initialTab);
-  // Friends sub-tab, sollevato qui per permettere alla notifica cross-tab
-  // (nuove richieste/sfide) di navigare direttamente alla sotto-scheda giusta.
+export function ProfileScreen({ onBack, initialTab = 'stats' }: ProfileScreenProps) {
+  const { user, profile } = useAuthStore();
+
+  const [mainTab, setMainTab] = useState<ProfileTab>(initialTab);
   const [friendsTab, setFriendsTab] = useState<'search' | 'friends' | 'requests' | 'challenges'>('search');
+  const [showEditSheet, setShowEditSheet] = useState(false);
+  const [showShop, setShowShop] = useState(false);
 
   const {
     friends,
@@ -40,149 +51,111 @@ export function ProfileScreen({ onBack, initialTab = 'info' }: ProfileScreenProp
     setFriendsTab(tab);
   });
 
-  const handleSignOut = async () => {
-    await signOut();
-    onBack();
-  };
-
   if (!user || !profile) {
     return (
-      <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]"></div>
+      <div className="flex min-h-screen items-center justify-center bg-ink">
+        <BallBounceLoader />
       </div>
     );
   }
 
+  if (showShop) {
+    return <ProfileShopTab onBack={() => setShowShop(false)} />;
+  }
+
+  const tier = calculateTier(profile.total_score);
+  const displayName = profile.first_name ? `${profile.first_name} ${profile.last_name || ''}`.trim() : user.email?.split('@')[0] || 'Giocatore';
+  const initials = (profile.nickname || profile.first_name || displayName).slice(0, 2).toUpperCase();
+
   return (
-    <div className="min-h-screen bg-[#121212] text-white p-4 md:p-8">
-      <div className="max-w-2xl mx-auto">
-        <header className="flex items-center justify-between mb-8">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Torna alla Home</span>
-          </button>
+    <div className="relative flex min-h-screen flex-col gap-4 overflow-hidden bg-ink px-4 pb-[140px] pt-12 text-chalk">
+      <header className="flex items-center gap-3.5">
+        <span
+          className="flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-[24px_24px_24px_6px] p-[3px]"
+          style={{ background: 'conic-gradient(from 180deg, var(--color-volt) 0 50%, var(--color-turf-3) 50%)' }}
+        >
+          <span className="disp flex h-full w-full items-center justify-center rounded-[21px_21px_21px_4px] border-[3px] border-ink bg-turf-2 text-2xl">
+            {profile.avatar_url ? (
+              <img src={profile.avatar_url} alt="Avatar" className="h-full w-full rounded-[21px_21px_21px_4px] object-cover" />
+            ) : (
+              initials
+            )}
+          </span>
+        </span>
 
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Esci</span>
-          </button>
-        </header>
-
-        {/* Main Navigation Tabs */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setMainTab('info')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'info' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <User className="w-4 h-4 inline mr-2" />
-            Info
-          </button>
-          <button
-            onClick={() => setMainTab('stats')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'stats' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Trophy className="w-4 h-4 inline mr-2" />
-            Statistiche
-          </button>
-          <button
-            onClick={() => setMainTab('friends')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'friends' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4 inline mr-2" />
-            Amici
-          </button>
-          <button
-            onClick={() => setMainTab('achievements')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'achievements' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Award className="w-4 h-4 inline mr-2" />
-            Achievement
-          </button>
-          <button
-            onClick={() => setMainTab('history')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'history' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <History className="w-4 h-4 inline mr-2" />
-            Storico
-          </button>
-          <button
-            onClick={() => setMainTab('shop')}
-            className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
-              mainTab === 'shop' ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4 inline mr-2" />
-            Shop
-          </button>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="disp truncate text-2xl" style={{ fontStretch: '105%' }}>
+            {displayName}
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="cond flex h-6 items-center rounded-np-pill px-2.5 text-[11px]" style={{ background: 'color-mix(in srgb, var(--tier-' + tier + '-label) 14%, transparent)', color: `var(--tier-${tier}-label)` }}>
+              {TIER_CONFIG[tier].label}
+            </span>
+            {profile.favorite_team && (
+              <span className="cond flex h-6 items-center rounded-np-pill bg-turf-2 px-2.5 text-[11px] text-chalk-2">
+                Tifoso {profile.favorite_team}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowShop(true)}
+              className="mono flex h-6 items-center gap-1 rounded-np-pill bg-[rgba(242,193,78,.12)] px-2.5 text-[11px] font-bold text-[#FFD36E]"
+            >
+              <Coins className="h-3 w-3" strokeWidth={2.4} />
+              {profile.coins ?? 0}
+            </button>
+          </div>
+          {profile.nickname && <span className="mono text-xs text-label">@{profile.nickname}</span>}
         </div>
 
-        {mainTab === 'info' && <ProfileInfoTab />}
-        {mainTab === 'stats' && <ProfileStatsTab />}
-        {mainTab === 'achievements' && <ProfileAchievementsTab />}
-        {mainTab === 'history' && <ProfileHistoryTab />}
-        {mainTab === 'shop' && <ProfileShopTab />}
-        {mainTab === 'friends' && (
-          <ProfileFriendsTab
-            currentUserId={user.id}
-            friendsTab={friendsTab}
-            setFriendsTab={setFriendsTab}
-            friends={friends}
-            friendRequests={friendRequests}
-            loadingFriends={loadingFriends}
-            pendingChallenges={pendingChallenges}
-            challengeHistory={challengeHistory}
-            loadingChallenges={loadingChallenges}
-            reloadFriends={reloadFriends}
-            reloadChallenges={reloadChallenges}
-          />
-        )}
+        <button
+          type="button"
+          aria-label="Modifica profilo"
+          onClick={() => setShowEditSheet(true)}
+          className="btn flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-turf-1"
+        >
+          <Pencil className="h-[17px] w-[17px]" strokeWidth={2} />
+        </button>
+      </header>
 
-        {/* Toast di notifica cross-tab (nuove richieste/sfide), visibile su qualunque scheda */}
-        {toastWithAction && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 ${
-              toastWithAction.type === 'success' ? 'bg-green-600' :
-              toastWithAction.type === 'error' ? 'bg-red-600' :
-              'bg-purple-600'
-            }`}
-          >
-            {toastWithAction.type === 'success' && <CheckCircle className="w-5 h-5" />}
-            {toastWithAction.type === 'error' && <X className="w-5 h-5" />}
-            {toastWithAction.type === 'info' && <UserPlus className="w-5 h-5" />}
-            <span className="font-medium text-white">{toastWithAction.message}</span>
-            {toastWithAction.action && (
-              <button
-                onClick={() => {
-                  toastWithAction.action?.();
-                  dismissToastWithAction();
-                }}
-                className="ml-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium text-white transition-colors"
-              >
-                {toastWithAction.actionLabel}
-              </button>
-            )}
-          </motion.div>
-        )}
-      </div>
+      <SegmentedControl options={TABS} value={mainTab} onChange={(v) => setMainTab(v as ProfileTab)} />
+
+      {mainTab === 'stats' && <ProfileStatsTab />}
+      {mainTab === 'achievements' && <ProfileAchievementsTab />}
+      {mainTab === 'history' && <ProfileHistoryTab />}
+      {mainTab === 'friends' && (
+        <ProfileFriendsTab
+          currentUserId={user.id}
+          friendsTab={friendsTab}
+          setFriendsTab={setFriendsTab}
+          friends={friends}
+          friendRequests={friendRequests}
+          loadingFriends={loadingFriends}
+          pendingChallenges={pendingChallenges}
+          challengeHistory={challengeHistory}
+          loadingChallenges={loadingChallenges}
+          reloadFriends={reloadFriends}
+          reloadChallenges={reloadChallenges}
+        />
+      )}
+
+      <EditProfileSheet open={showEditSheet} onClose={() => setShowEditSheet(false)} onSignedOut={onBack} />
+
+      {toastWithAction && (
+        <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto">
+            <Toast
+              tone={toastWithAction.type === 'success' ? 'success' : toastWithAction.type === 'error' ? 'error' : 'info'}
+              message={toastWithAction.message}
+              actionLabel={toastWithAction.action ? toastWithAction.actionLabel : undefined}
+              onAction={() => {
+                toastWithAction.action?.();
+                dismissToastWithAction();
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

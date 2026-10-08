@@ -19,7 +19,7 @@ import type { LeaderboardEntry } from '../types/game';
 import { Chip } from './ui/Chip';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
-import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
+import { PitchSkeleton } from './ui/loaders/PitchSkeleton';
 import { RefreshCw, Users, Flame, Trophy } from 'lucide-react';
 import { cn } from '../lib/cn';
 
@@ -202,9 +202,7 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
       </div>
 
       {loading && entries.length === 0 ? (
-        <div className="flex justify-center py-20">
-          <BallBounceLoader />
-        </div>
+        <PitchSkeleton rows={5} />
       ) : error ? (
         <div className="py-16 text-center">
           <p className="mb-4 text-sm text-ember-light">{error}</p>

@@ -1,5 +1,9 @@
-import { Zap, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Zap } from 'lucide-react';
+import { AlertDialog } from '../ui/AlertDialog';
+import { AlertIconBadge } from '../ui/AlertIconBadge';
+import { Button } from '../ui/Button';
+import { DifficultySelector, type DifficultyOption } from '../ui/DifficultySelector';
+import { LeagueFlag, LEAGUE_NAMES, type LeagueKey } from '../ui/LeagueFlag';
 
 export interface ChallengeModalState {
   friendId: string;
@@ -17,88 +21,70 @@ interface ChallengeFriendModalProps {
   onSubmit: () => void;
 }
 
-const DIFFICULTIES = [
-  { value: 1, label: 'Facile', color: 'bg-green-600' },
-  { value: 2, label: 'Medio', color: 'bg-yellow-600' },
-  { value: 3, label: 'Difficile', color: 'bg-red-600' }
+const DIFFICULTY_OPTIONS: DifficultyOption<number>[] = [
+  { value: 1, label: 'Facile', tone: 'volt' },
+  { value: 2, label: 'Medio', tone: 'volt' },
+  { value: 3, label: 'Difficile', tone: 'volt' },
+];
+
+// Il backend sfide-amico usa codici stringa (storico, non gli id numerici
+// API-Football di HomeScreen) — mappati qui solo per riusare `LeagueFlag`.
+const LEAGUE_OPTIONS: { code: string; flagKey: LeagueKey; label: string }[] = [
+  { code: 'all', flagKey: 'all', label: 'Tutti' },
+  { code: 'seria_a', flagKey: 135, label: LEAGUE_NAMES[135] },
+  { code: 'premier', flagKey: 39, label: LEAGUE_NAMES[39] },
+  { code: 'la_liga', flagKey: 140, label: LEAGUE_NAMES[140] },
+  { code: 'bundesliga', flagKey: 78, label: LEAGUE_NAMES[78] },
+  { code: 'ligue_1', flagKey: 61, label: LEAGUE_NAMES[61] },
 ];
 
 export function ChallengeFriendModal({ challengeModal, creatingChallenge, onChange, onCancel, onSubmit }: ChallengeFriendModalProps) {
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="bg-[#1E1E1E] border border-yellow-500/30 rounded-3xl p-6 max-w-sm w-full"
-      >
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-8 h-8 text-yellow-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-white">Sfida {challengeModal.friendName}</h2>
-          <p className="text-zinc-400 mt-2">Configura la tua sfida</p>
-        </div>
-
-        {/* Difficulty Selection */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-zinc-400 mb-2">Difficoltà</label>
-          <div className="grid grid-cols-3 gap-2">
-            {DIFFICULTIES.map((diff) => (
-              <button
-                key={diff.value}
-                onClick={() => onChange({ ...challengeModal, difficulty: diff.value })}
-                className={`py-2 rounded-lg font-medium transition-colors ${
-                  challengeModal.difficulty === diff.value
-                    ? diff.color + ' text-white'
-                    : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                }`}
-              >
-                {diff.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* League Selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-zinc-400 mb-2">Campionato</label>
-          <select
-            value={challengeModal.league}
-            onChange={(e) => onChange({ ...challengeModal, league: e.target.value })}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-yellow-500"
-          >
-            <option value="all">Tutti i Campionati</option>
-            <option value="seria_a">Serie A 🇮🇹</option>
-            <option value="premier">Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿</option>
-            <option value="la_liga">La Liga 🇪🇸</option>
-            <option value="bundesliga">Bundesliga 🇩🇪</option>
-            <option value="ligue_1">Ligue 1 🇫🇷</option>
-          </select>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-xl font-bold text-white bg-zinc-700 hover:bg-zinc-600 transition-colors"
-          >
+    <AlertDialog
+      open
+      onClose={onCancel}
+      icon={<AlertIconBadge icon={<Zap className="h-[26px] w-[26px]" strokeWidth={2.2} />} />}
+      title={`Sfida ${challengeModal.friendName}`}
+      description="Scegli difficoltà e campionato per la sfida."
+      actions={
+        <>
+          <Button variant="volt" loading={creatingChallenge} onClick={onSubmit}>
+            <Zap className="h-4 w-4" />
+            Invia sfida
+          </Button>
+          <Button variant="text-neutral" onClick={onCancel}>
             Annulla
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={creatingChallenge}
-            className="flex-1 py-3 rounded-xl font-bold text-black bg-yellow-500 hover:bg-yellow-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {creatingChallenge ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Zap className="w-5 h-5" />
-                Invia Sfida
-              </>
-            )}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <div className="flex w-full flex-col gap-3.5 text-left">
+        <div className="flex flex-col gap-2">
+          <span className="cond text-[11px] text-label">Difficoltà</span>
+          <DifficultySelector options={DIFFICULTY_OPTIONS} value={challengeModal.difficulty} onChange={(v) => onChange({ ...challengeModal, difficulty: v })} />
         </div>
-      </motion.div>
-    </div>
+        <div className="flex flex-col gap-2">
+          <span className="cond text-[11px] text-label">Campionato</span>
+          <div className="rail -mx-5 flex gap-1.5 overflow-x-auto px-5">
+            {LEAGUE_OPTIONS.map((opt) => {
+              const selected = challengeModal.league === opt.code;
+              return (
+                <button
+                  key={opt.code}
+                  type="button"
+                  onClick={() => onChange({ ...challengeModal, league: opt.code })}
+                  className={`chip flex shrink-0 items-center gap-1.5 rounded-np-pill border px-2.5 py-1.5 ${
+                    selected ? 'border-volt bg-turf-2' : 'border-white/10 bg-transparent'
+                  }`}
+                >
+                  <LeagueFlag league={opt.flagKey} variant="chip" className="rounded-full" />
+                  <span className="text-xs font-semibold">{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </AlertDialog>
   );
 }

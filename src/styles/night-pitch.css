@@ -72,10 +72,19 @@
  * impostano il proprio sfondo a livello di wrapper (es. bg-[#121212]) che
  * copre comunque questo valore: resta innocuo finché quella schermata non
  * viene aggiornata nelle fasi successive.
+ *
+ * `color` qui è necessario, non decorativo: `BottomSheet`/`AlertDialog`/
+ * `Toast` montano il loro contenuto via `createPortal` direttamente su
+ * `document.body`, bypassando il wrapper `text-chalk` di ogni schermata.
+ * Senza un colore di default qui, qualunque testo in quei portal che non
+ * specifichi esplicitamente il proprio colore eredita il nero di default
+ * del browser — bug reale segnalato dall'utente (titoli di dialog illeggibili),
+ * non solo un'inezia estetica.
  */
 body {
   margin: 0;
   background: var(--color-ink);
+  color: var(--color-chalk);
 }
 a {
   color: var(--color-volt);
@@ -462,33 +471,56 @@ button {
   animation: np-clock-hot 1s ease-out infinite;
 }
 
-/* Loader a tema (Fase 10/1.19): palleggio, radar, tabellone, rigore, fischio d'inizio, skeleton prato */
+/*
+ * Loader a tema (Fase 10/1.19): palleggio, radar, tabellone, rigore, fischio
+ * d'inizio, skeleton prato. Palleggio/Radar allineati pixel-per-pixel a
+ * `loader-microinterazioni.html`/`home-ricerca-avversario.html` dopo
+ * segnalazione utente (prima versione troppo approssimata, percepita come
+ * "spinner generico"/"radar incompleto").
+ */
 @keyframes np-ball-bounce {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translateY(calc(-1 * var(--bounce-h, 70px)));
+  }
+  45% {
+    transform: translateY(0) scale(1, 1);
   }
   50% {
-    transform: translateY(-22px);
+    transform: translateY(4px) scale(1.18, 0.8);
+  }
+  58% {
+    transform: translateY(-6px) scale(0.95, 1.06);
   }
 }
 .ball-bounce {
-  animation: np-ball-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  display: inline-block;
+  animation: np-ball-bounce 1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  transform-origin: 50% 100%;
+}
+
+@keyframes np-ball-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ball-spin {
+  animation: np-ball-spin 1.6s linear infinite;
 }
 
 @keyframes np-ball-shadow {
   0%,
   100% {
-    transform: scaleX(1);
-    opacity: 0.35;
+    transform: scaleX(0.45);
+    opacity: 0.25;
   }
   50% {
-    transform: scaleX(0.6);
-    opacity: 0.15;
+    transform: scaleX(1.1);
+    opacity: 0.7;
   }
 }
 .ball-shadow {
-  animation: np-ball-shadow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  animation: np-ball-shadow 1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 }
 
 @keyframes np-radar-sweep {
@@ -503,15 +535,45 @@ button {
 @keyframes np-radar-ping {
   0% {
     transform: scale(0.4);
-    opacity: 0.7;
+    opacity: 0.9;
   }
   100% {
-    transform: scale(1.8);
+    transform: scale(1.7);
     opacity: 0;
   }
 }
 .radar-ping {
-  animation: np-radar-ping 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation: np-radar-ping 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.radar-ping2 {
+  animation-delay: 1.2s;
+}
+
+/* "Contatti" radar: due pallini ember che appaiono/si mantengono/svaniscono a posizioni fisse — mancanti nella prima versione, principale motivo per cui il radar sembrava incompleto. */
+@keyframes np-radar-blip {
+  0%,
+  30% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  50%,
+  85% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.radar-blip {
+  animation: np-radar-blip 2.4s ease-out infinite;
+}
+.radar-blip2 {
+  animation-delay: 0.9s;
 }
 
 @keyframes np-flap {
@@ -675,6 +737,79 @@ button {
 }
 
 /*
+ * Tornei (Fase 7): disegno bracket della CTA "Crea torneo" (stroke-dashoffset
+ * draw-in, 3 ritardi), dot "Aperto" pulsante, icona "+" che ruota on-hover
+ * (stesso pattern di `.arr`/`.ib svg`), pallini slot-giocatori che "pop-in"
+ * nel form di creazione, reveal del campo data/ora schedulata.
+ */
+@keyframes np-bracket-draw {
+  from {
+    stroke-dashoffset: 120;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.br {
+  stroke-dasharray: 120;
+  animation: np-bracket-draw 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.br2 {
+  animation-delay: 0.25s;
+}
+.br3 {
+  animation-delay: 0.5s;
+}
+
+@keyframes np-pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.5;
+  }
+}
+.pulse-dot {
+  animation: np-pulse-dot 1.6s ease-in-out infinite;
+}
+
+.btn .plus {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.btn:hover .plus {
+  transform: rotate(90deg);
+}
+
+@keyframes np-slot-pop {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.slot-pop {
+  animation: np-slot-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes np-reveal-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.reveal-down {
+  animation: np-reveal-down 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
  * prefers-reduced-motion: i loader diventano statici (pulsazione d'opacità
  * sostituisce lo scatto), gli scatti diventano dissolvenze da 120ms.
  */
@@ -691,8 +826,12 @@ button {
   .hot,
   .ball-bounce,
   .ball-shadow,
+  .ball-spin,
   .radar-sweep,
   .radar-ping,
+  .radar-ping2,
+  .radar-blip,
+  .radar-blip2,
   .flap,
   .penalty-fly,
   .kickoff-ring,
@@ -712,8 +851,27 @@ button {
   .podium-silver,
   .podium-bronze,
   .crown,
-  .row-in {
+  .row-in,
+  .pulse-dot {
     animation: none !important;
+  }
+
+  .br,
+  .br2,
+  .br3 {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+
+  .slot-pop {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .reveal-down {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   .press:active {

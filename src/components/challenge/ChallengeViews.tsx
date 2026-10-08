@@ -1,208 +1,239 @@
+import { useEffect, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Trophy, User, Check, X, Loader2, ArrowLeft, Send, Clock, Play } from 'lucide-react';
+import { Trophy, User, Check, Clock, Play, Send, X, ArrowLeft } from 'lucide-react';
 import type { ChallengeViewState } from './useChallenge';
+import { LEAGUE_TEXT_TO_ID } from '../../lib/api/friend-challenges';
+import { LEAGUE_NAMES, type LeagueKey } from '../ui/LeagueFlag';
+import { Button } from '../ui/Button';
+import { Field } from '../ui/Field';
+import { EmptyState } from '../ui/EmptyState';
+import { BallBounceLoader } from '../ui/loaders/BallBounceLoader';
+import { cn } from '../../lib/cn';
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleString('it-IT', {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+/** Pill "in attesa" + countdown mono live fino a `expiresAt` — sostituisce la sola data statica di scadenza, stesso pattern eyebrow+timer di `home-ricerca-avversario.html` ("Matchmaking · 00:07"). */
+function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, new Date(expiresAt).getTime() - Date.now()));
+
+  useEffect(() => {
+    const id = setInterval(() => setRemaining(Math.max(0, new Date(expiresAt).getTime() - Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return (
+    <div className="flex w-full items-center justify-between">
+      <span className="cond flex items-center gap-2 text-[11px] text-volt">
+        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-volt" />
+        In attesa
+      </span>
+      <span className="mono text-xs text-chalk-2">{remaining > 0 ? `Scade tra ${formatCountdown(remaining)}` : 'Scaduta'}</span>
+    </div>
+  );
+}
+
+const DIFFICULTY_LABELS: Record<number, string> = { 1: 'Facile', 2: 'Medio', 3: 'Difficile' };
+
+/** Solo le sfide tra amici portano `league`/`difficulty` (vedi `useChallenge.ts`); il codice testuale si converte in nome via la stessa mappa già usata altrove per avviare la partita. */
+function leagueLabel(code?: string): string | undefined {
+  if (!code) return undefined;
+  if (code === 'all') return LEAGUE_NAMES.all;
+  const id = LEAGUE_TEXT_TO_ID[code];
+  return id ? LEAGUE_NAMES[id as LeagueKey] : code;
+}
+
+function ChallengeHeader({ icon, title, onBack }: { icon: ReactNode; title: string; onBack: () => void }) {
+  return (
+    <header className="flex items-center gap-3 px-4 pt-12">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Indietro"
+        className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-turf-1"
+      >
+        <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.2} />
+      </button>
+      <h1 className="disp flex min-w-0 flex-1 items-center gap-2 truncate text-[22px]">
+        {icon}
+        {title}
+      </h1>
+    </header>
+  );
+}
+
+function InfoRow({ icon, label, value, mono }: { icon: ReactNode; label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-3">
+      <span className="flex items-center gap-2.5 text-sm text-chalk-2">
+        {icon}
+        {label}
+      </span>
+      <span className={cn('text-sm font-semibold', mono && 'mono font-normal text-chalk-2')}>{value}</span>
+    </div>
+  );
+}
+
+function MetaChip({ children }: { children: ReactNode }) {
+  return (
+    <span className="cond flex h-7 items-center gap-1.5 rounded-np-pill bg-turf-2 px-2.5 text-[11px] text-chalk-2">{children}</span>
+  );
+}
+
+function MetaChipsRow({ challenge }: { challenge: ChallengeViewState }) {
+  const league = leagueLabel(challenge.league);
+  const difficulty = challenge.difficulty ? DIFFICULTY_LABELS[challenge.difficulty] : undefined;
+  if (!league && !difficulty) return null;
+  return (
+    <div className="flex gap-1.5">
+      {league && <MetaChip>{league}</MetaChip>}
+      {difficulty && <MetaChip>{difficulty}</MetaChip>}
+    </div>
+  );
+}
+
+function HeroIcon({ icon, pulse }: { icon: ReactNode; pulse?: boolean }) {
+  return (
+    <span className={cn('flex h-20 w-20 items-center justify-center rounded-full bg-volt/[.12] text-volt', pulse && 'glow')}>
+      {icon}
+    </span>
+  );
 }
 
 export function ChallengeLoadingView({ gameStarting }: { gameStarting: boolean }) {
   return (
-    <div className="min-h-screen bg-[#121212] text-white flex flex-col items-center justify-center p-4">
-      <Loader2 className="animate-spin text-purple-400 w-12 h-12 mb-4" />
-      <p className="text-zinc-400">
-        {gameStarting ? 'Avvio partita...' : 'Caricamento sfida...'}
-      </p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-ink p-4 text-chalk">
+      <BallBounceLoader />
+      <p className="disp text-center text-xl text-volt">{gameStarting ? 'Avvio partita…' : 'Caricamento sfida…'}</p>
     </div>
   );
 }
 
 export function ChallengeErrorView({ message, onBack }: { message: string; onBack: () => void }) {
   return (
-    <div className="min-h-screen bg-[#121212] text-white flex flex-col items-center justify-center p-4">
-      <div className="bg-red-500/20 border border-red-500/50 rounded-2xl p-8 max-w-md text-center">
-        <X className="w-16 h-16 text-red-400 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Sfida Non Disponibile</h2>
-        <p className="text-zinc-400 mb-6">{message}</p>
-        <button
-          onClick={onBack}
-          className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full hover:bg-yellow-400 transition-colors"
-        >
-          Torna alla Home
-        </button>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-ink p-4 text-chalk">
+      <EmptyState
+        icon={<X className="h-6 w-6" />}
+        title="Sfida non disponibile"
+        subtitle={message}
+        action={
+          <Button variant="volt" onClick={onBack}>
+            Torna alla Home
+          </Button>
+        }
+        className="max-w-sm"
+      />
     </div>
   );
 }
 
 export function ChallengeExpiredView({ onBack }: { onBack: () => void }) {
   return (
-    <div className="min-h-screen bg-[#121212] text-white flex flex-col items-center justify-center p-4">
-      <div className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-8 max-w-md text-center">
-        <X className="w-16 h-16 text-zinc-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Sfida Scaduta</h2>
-        <p className="text-zinc-400 mb-6">Questa sfida non è più disponibile.</p>
-        <button
-          onClick={onBack}
-          className="bg-[#FFD700] text-black font-bold py-3 px-8 rounded-full hover:bg-yellow-400 transition-colors"
-        >
-          Torna alla Home
-        </button>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-ink p-4 text-chalk">
+      <EmptyState
+        icon={<Clock className="h-6 w-6" />}
+        title="Sfida scaduta"
+        subtitle="Questa sfida non è più disponibile."
+        action={
+          <Button variant="volt" onClick={onBack}>
+            Torna alla Home
+          </Button>
+        }
+        className="max-w-sm"
+      />
     </div>
   );
 }
 
 export function ChallengeCreatorPendingView({ challenge, token, onBack }: { challenge: ChallengeViewState; token: string; onBack: () => void }) {
-  return (
-    <div className="min-h-screen bg-[#121212] text-white font-sans">
-      <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-4">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
-          <button
-            onClick={onBack}
-            className="p-2 -ml-2 hover:bg-zinc-800 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Send className="text-purple-400 w-5 h-5" />
-            La tua Sfida
-          </h1>
-          <div className="w-9" />
-        </div>
-      </div>
+  const link = `${window.location.origin}/sfida/${token}`;
 
-      <div className="max-w-lg mx-auto px-4 py-8">
+  return (
+    <div className="flex min-h-screen flex-col gap-6 bg-ink pb-10 text-chalk">
+      <ChallengeHeader icon={<Send className="h-5 w-5 text-volt" />} title="La tua sfida" onBack={onBack} />
+
+      <div className="flex flex-col gap-6 px-4">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="flex flex-col items-center gap-3 rounded-np-hero border border-white/[.07] bg-turf-1 px-6 py-8 text-center"
         >
-          <div className="w-24 h-24 bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-purple-500/30">
-            <Clock className="w-12 h-12 text-purple-400 animate-pulse" />
-          </div>
-          <h2 className="text-3xl font-black text-white mb-2">
-            In attesa di un avversario
-          </h2>
-          <p className="text-zinc-400">
-            Condividi il link per sfidare un amico!
-          </p>
+          <ExpiryBadge expiresAt={challenge.expiresAt} />
+          <HeroIcon icon={<Clock className="h-9 w-9" strokeWidth={2} />} pulse />
+          <span className="disp text-2xl">In attesa di un avversario</span>
+          <span className="text-sm text-chalk-2">Condividi il link per sfidare un amico</span>
         </motion.div>
 
-        <div className="bg-zinc-900/50 rounded-2xl p-6 border border-zinc-800 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <User className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Creata da</span>
-            </div>
-            <span className="font-bold text-white">{challenge.creatorName}</span>
-          </div>
-
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Creata il</span>
-            </div>
-            <span className="font-mono text-zinc-300">{formatDate(challenge.createdAt || '')}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Scade il</span>
-            </div>
-            <span className="font-mono text-zinc-300">{formatDate(challenge.expiresAt || '')}</span>
-          </div>
+        <div className="flex flex-col divide-y divide-white/[.07] rounded-np-lg bg-turf-1 px-4">
+          <InfoRow icon={<User className="h-4 w-4" />} label="Creata da" value={challenge.creatorName} />
+          <InfoRow icon={<Clock className="h-4 w-4" />} label="Creata il" value={formatDate(challenge.createdAt)} mono />
         </div>
 
-        {/* Share link section */}
-        <div className="bg-purple-900/20 border border-purple-500/30 rounded-2xl p-4 mb-6">
-          <p className="text-purple-300 text-sm font-medium mb-3">Condividi questo link:</p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={`${window.location.origin}/sfida/${token}`}
-              readOnly
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm"
-            />
-            <button
-              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/sfida/${token}`)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold transition-colors"
-            >
-              Copia
-            </button>
-          </div>
-        </div>
+        <MetaChipsRow challenge={challenge} />
 
-        <button
-          onClick={onBack}
-          className="w-full text-center text-zinc-500 hover:text-zinc-400 underline py-2"
-        >
-          Torna alla Home
-        </button>
+        <div className="flex flex-col gap-2">
+          <span className="cond text-[11px] text-label">Condividi questo link</span>
+          <Field
+            readOnly
+            value={link}
+            suffix={
+              <Button variant="volt" size="sm" onClick={() => navigator.clipboard.writeText(link)}>
+                Copia
+              </Button>
+            }
+          />
+          <span className="mono text-center text-xs text-chalk-2">
+            Attendi che un avversario accetti. Verrai reindirizzato automaticamente.
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
-export function ChallengeCreatorAcceptedView({ challenge, onBack, onStartGame }: { challenge: ChallengeViewState; onBack: () => void; onStartGame: () => void }) {
+export function ChallengeCreatorAcceptedView({
+  challenge, onBack, onStartGame,
+}: { challenge: ChallengeViewState; onBack: () => void; onStartGame: () => void }) {
   return (
-    <div className="min-h-screen bg-[#121212] text-white font-sans">
-      <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-4">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
-          <button
-            onClick={onBack}
-            className="p-2 -ml-2 hover:bg-zinc-800 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Check className="text-green-400 w-5 h-5" />
-            Sfida Accettata!
-          </h1>
-          <div className="w-9" />
-        </div>
-      </div>
+    <div className="flex min-h-screen flex-col gap-6 bg-ink pb-10 text-chalk">
+      <ChallengeHeader icon={<Check className="h-5 w-5 text-volt" />} title="Sfida accettata!" onBack={onBack} />
 
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="flex flex-col gap-6 px-4">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="flex flex-col items-center gap-3 rounded-np-hero border border-volt/35 bg-turf-1 px-6 py-8 text-center"
+          style={{ boxShadow: '0 0 50px -10px rgba(215,255,58,.35)' }}
         >
-          <div className="w-24 h-24 bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-green-500/30">
-            <User className="w-12 h-12 text-green-400" />
-          </div>
-          <h2 className="text-3xl font-black text-white mb-2">
-            {challenge.opponentName} ha accettato!
-          </h2>
-          <p className="text-zinc-400">
-            La sfida è iniziata, preparati a giocare!
-          </p>
+          <HeroIcon icon={<User className="h-9 w-9" strokeWidth={2} />} />
+          <span className="disp text-2xl">{challenge.opponentName} ha accettato!</span>
+          <span className="text-sm text-chalk-2">La sfida è iniziata, preparati a giocare</span>
         </motion.div>
 
-        <div className="bg-zinc-900/50 rounded-2xl p-6 border border-zinc-800 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <User className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Il tuo avversario</span>
-            </div>
-            <span className="font-bold text-green-400">{challenge.opponentName}</span>
-          </div>
+        <div className="flex flex-col rounded-np-lg bg-turf-1 px-4">
+          <InfoRow icon={<User className="h-4 w-4" />} label="Il tuo avversario" value={challenge.opponentName ?? 'Sfidante'} />
         </div>
 
-        <button
-          onClick={onStartGame}
-          className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-500 text-white font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] transition-all"
-        >
-          <Play className="w-6 h-6" />
-          <span>Inizia a Giocare</span>
-        </button>
+        <Button variant="volt" size="md" onClick={onStartGame} className="w-full text-lg">
+          <Play className="h-5 w-5" />
+          Inizia a giocare
+        </Button>
       </div>
     </div>
   );
@@ -219,106 +250,50 @@ interface ChallengeVisitorAcceptViewProps {
 
 export function ChallengeVisitorAcceptView({ challenge, hasUser, accepted, accepting, onBack, onAccept }: ChallengeVisitorAcceptViewProps) {
   return (
-    <div className="min-h-screen bg-[#121212] text-white font-sans">
-      <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-4">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
-          <button
-            onClick={onBack}
-            className="p-2 -ml-2 hover:bg-zinc-800 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Send className="text-purple-400 w-5 h-5" />
-            Sfida
-          </h1>
-          <div className="w-9" />
-        </div>
-      </div>
+    <div className="flex min-h-screen flex-col gap-6 bg-ink pb-10 text-chalk">
+      <ChallengeHeader icon={<Trophy className="h-5 w-5 text-volt" />} title="Sfida" onBack={onBack} />
 
-      <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="flex flex-col gap-6 px-4">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="flex flex-col items-center gap-3 rounded-np-hero border border-white/[.07] bg-turf-1 px-6 py-8 text-center"
         >
-          <div className="w-24 h-24 bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-purple-500/30">
-            <Trophy className="w-12 h-12 text-purple-400" />
-          </div>
-          <h2 className="text-3xl font-black text-white mb-2">
-            Sfida da {challenge.creatorName}
-          </h2>
-          <p className="text-zinc-400">
-            Accetta la sfida e mostra le tue conoscenze calcistiche!
-          </p>
+          {!accepted && <ExpiryBadge expiresAt={challenge.expiresAt} />}
+          <HeroIcon icon={<Trophy className="h-9 w-9" strokeWidth={2} />} />
+          <span className="disp text-2xl">Sfida da {challenge.creatorName}</span>
+          <span className="text-sm text-chalk-2">Accetta e mostra le tue conoscenze calcistiche</span>
         </motion.div>
 
-        <div className="bg-zinc-900/50 rounded-2xl p-6 border border-zinc-800 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <User className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Creato da</span>
-            </div>
-            <span className="font-bold text-white">{challenge.creatorName}</span>
-          </div>
-
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Creato il</span>
-            </div>
-            <span className="font-mono text-zinc-300">{formatDate(challenge.createdAt || '')}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-zinc-400" />
-              <span className="text-zinc-400">Scade il</span>
-            </div>
-            <span className="font-mono text-zinc-300">{formatDate(challenge.expiresAt || '')}</span>
-          </div>
+        <div className="flex flex-col divide-y divide-white/[.07] rounded-np-lg bg-turf-1 px-4">
+          <InfoRow icon={<User className="h-4 w-4" />} label="Creata da" value={challenge.creatorName} />
+          <InfoRow icon={<Clock className="h-4 w-4" />} label="Creata il" value={formatDate(challenge.createdAt)} mono />
         </div>
+
+        <MetaChipsRow challenge={challenge} />
 
         {accepted ? (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-purple-500/20 border border-purple-500/50 rounded-2xl p-6 text-center"
+            className="flex flex-col items-center gap-2 rounded-np-lg border border-volt/35 bg-volt/[.1] px-6 py-6 text-center"
           >
-            <Check className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">Sfida Accettata!</h3>
-            <p className="text-zinc-400">La partita sta per iniziare...</p>
+            <Check className="h-10 w-10 text-volt" />
+            <span className="disp text-xl">Sfida accettata!</span>
+            <span className="text-sm text-chalk-2">La partita sta per iniziare…</span>
           </motion.div>
         ) : hasUser ? (
-          <button
-            onClick={onAccept}
-            disabled={accepting}
-            className="w-full flex items-center justify-center gap-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all"
-          >
-            {accepting ? (
-              <>
-                <Loader2 className="animate-spin w-6 h-6" />
-                <span>Accettazione...</span>
-              </>
-            ) : (
-              <>
-                <Check className="w-6 h-6" />
-                <span>Accetta Sfida</span>
-              </>
-            )}
-          </button>
+          <Button variant="volt" size="md" loading={accepting} onClick={onAccept} className="w-full text-lg">
+            {!accepting && <Check className="h-5 w-5" />}
+            Accetta sfida
+          </Button>
         ) : (
-          <div className="text-center">
-            <p className="text-zinc-400 mb-4">
-              Devi effettuare l'accesso per accettare la sfida
-            </p>
-            <button
-              onClick={onBack}
-              className="w-full flex items-center justify-center gap-3 bg-[#FFD700] text-black font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-all"
-            >
-              <User className="w-6 h-6" />
-              <span>Accedi e Accetta</span>
-            </button>
+          <div className="flex flex-col items-center gap-3 text-center">
+            <span className="text-sm text-chalk-2">Devi accedere per accettare la sfida</span>
+            <Button variant="chalk" size="md" onClick={onBack} className="w-full text-lg">
+              <User className="h-5 w-5" />
+              Accedi e accetta
+            </Button>
           </div>
         )}
       </div>

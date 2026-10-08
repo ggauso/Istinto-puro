@@ -210,7 +210,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
       {isSearching ? (
         <div className="relative flex flex-1 flex-col items-center gap-6 pb-10 pt-6">
           <RadarLoader
-            center={<span className="disp text-lg text-volt">{displayName.charAt(0).toUpperCase()}</span>}
+            center={<span className="disp text-lg text-ink">{displayName.charAt(0).toUpperCase()}</span>}
           />
           <div className="flex flex-col items-center gap-2 text-center">
             <span className="disp text-2xl">Cerco rivale…</span>

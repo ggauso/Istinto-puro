@@ -9,8 +9,40 @@ import {
   getCommonTeamCombos, getAccuracyByDifficulty, getAvgResponseTime, getMostGuessedPlayers,
   type CommonTeamCombo, type AccuracyByDifficulty, type AvgResponseTime, type MostGuessedPlayer
 } from '../../lib/api/round-stats';
-import { Trophy, Target, Users, Loader2, Shuffle, Crosshair, Timer, Star } from 'lucide-react';
+import { WinRateHeroCard, StatTile } from '../ui/BentoStatCard';
+import { StripedProgressBar } from '../ui/StripedProgressBar';
+import { EmptyState } from '../ui/EmptyState';
+import { BallBounceLoader } from '../ui/loaders/BallBounceLoader';
+import { ChevronDown, Flame, Shuffle, Crosshair, Timer, Star, Users2, BarChart3, PieChart } from 'lucide-react';
 import { motion } from 'motion/react';
+
+function AdvancedCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3.5 rounded-np-lg bg-turf-1 p-[18px]">
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-np-sm bg-turf-2 text-volt">{icon}</span>
+        <span className="text-[15px] font-semibold">{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LabeledBar({ label, pct, color = 'var(--color-volt)' }: { label: React.ReactNode; pct: number; color?: string }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between">
+        <span className="text-xs text-chalk-2">{label}</span>
+        <span className="mono text-xs font-semibold" style={{ color }}>
+          {pct}%
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-np-pill bg-ink">
+        <div className="h-full rounded-np-pill transition-[width] duration-500" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
 
 export function ProfileStatsTab() {
   const { user, profile } = useAuthStore();
@@ -24,16 +56,9 @@ export function ProfileStatsTab() {
     byOpponentTier: StatsByOpponentTier[];
     monthly: MonthlyActivity[];
     distribution: ResultDistribution[];
-  }>({
-    byDifficulty: [],
-    byOpponentTier: [],
-    monthly: [],
-    distribution: []
-  });
+  }>({ byDifficulty: [], byOpponentTier: [], monthly: [], distribution: [] });
   const [loadingAdvancedStats, setLoadingAdvancedStats] = useState(false);
 
-  // Statistiche per-round (Milestone 7, Task 7.2) — caricate insieme alle
-  // altre statistiche avanzate, stessa sezione espandibile.
   const [roundStats, setRoundStats] = useState<{
     combos: CommonTeamCombo[];
     accuracy: AccuracyByDifficulty[];
@@ -44,11 +69,13 @@ export function ProfileStatsTab() {
   useEffect(() => {
     if (!user) return;
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
     if (!user || !showAdvancedStats) return;
     loadAdvancedStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, showAdvancedStats]);
 
   async function loadStats() {
@@ -71,7 +98,7 @@ export function ProfileStatsTab() {
           streak_type: profile.streak_type || 'none',
           longest_win_streak: profile.longest_win_streak || 0,
           longest_loss_streak: profile.longest_loss_streak || 0,
-          best_score: profile.best_score || 0
+          best_score: profile.best_score || 0,
         });
       }
     } catch (err) {
@@ -91,7 +118,7 @@ export function ProfileStatsTab() {
         getCommonTeamCombos(user!.id),
         getAccuracyByDifficulty(user!.id),
         getAvgResponseTime(user!.id),
-        getMostGuessedPlayers(user!.id)
+        getMostGuessedPlayers(user!.id),
       ]);
       setAdvancedStats({ byDifficulty, byOpponentTier, monthly, distribution });
       setRoundStats({ combos, accuracy, responseTime, mostGuessed });
@@ -101,7 +128,7 @@ export function ProfileStatsTab() {
     setLoadingAdvancedStats(false);
   }
 
-  const difficultyLabel = (d: number) => d === 1 ? 'Facile' : d === 2 ? 'Medio' : d === 3 ? 'Difficile' : d === 4 ? 'Hard' : `Liv. ${d}`;
+  const difficultyLabel = (d: number) => (d === 1 ? 'Facile' : d === 2 ? 'Medio' : d === 3 ? 'Difficile' : d === 4 ? 'Hard' : `Liv. ${d}`);
   const overallResponseTime = roundStats.responseTime.find((r) => r.difficulty === null);
   const responseTimeByDifficulty = roundStats.responseTime.filter((r) => r.difficulty !== null);
 
@@ -110,467 +137,244 @@ export function ProfileStatsTab() {
   const totalScore = profile.total_score || 0;
   const tier = calculateTier(totalScore);
   const tierProgress = getTierProgress(totalScore);
-  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  const nextTierScore = getNextTierScore(tier);
+
+  if (loadingStats || !stats) {
+    return (
+      <div className="flex justify-center py-16">
+        <BallBounceLoader />
+      </div>
+    );
+  }
+
+  const maxMonthly = Math.max(...advancedStats.monthly.map((m) => m.matches_played), 1);
+  const distributionTotal = advancedStats.distribution.reduce((sum, d) => sum + d.count, 0);
+  const distByType = (type: string) => advancedStats.distribution.find((d) => d.result_type === type);
 
   return (
-    <div className="space-y-6">
-      {/* Basic Stats */}
-      <div className="bg-[#1E1E1E] rounded-3xl p-6 shadow-2xl border border-white/5">
-        <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
-          <Trophy className="w-5 h-5 text-yellow-400" />
-          Statistiche
-        </h2>
-
-        {loadingStats ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+    <div className="flex flex-col gap-4">
+      <section className="grid grid-cols-2 grid-rows-[118px_118px_96px] gap-2.5">
+        <WinRateHeroCard percent={stats.win_rate} matchesLabel={`${stats.matches_played} partite`} className="row-span-2 p-4" />
+        <StatTile label="Partite" value={stats.matches_played} className="p-3.5" />
+        <div className="flex flex-col justify-between rounded-np-lg bg-turf-1 p-3.5">
+          <span className="cond text-[11px] text-label">Serie</span>
+          <div className="flex items-center gap-1.5">
+            <Flame className="flame h-[26px] w-[26px] fill-ember text-ember" />
+            <span className="disp text-[40px]">{stats.current_streak}</span>
           </div>
-        ) : stats ? (
-          <div className="space-y-4">
-            {/* Card Progresso Tier */}
-            <div className="bg-gradient-to-r from-purple-900/50 to-indigo-900/50 rounded-2xl p-5 border border-purple-500/30">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
-                    tier === 'diamond' ? 'bg-purple-900/50' :
-                    tier === 'platinum' ? 'bg-cyan-900/50' :
-                    tier === 'gold' ? 'bg-yellow-900/50' :
-                    tier === 'silver' ? 'bg-gray-600/50' :
-                    'bg-amber-900/50'
-                  }`}>
-                    {tier === 'diamond' ? '💎' : tier === 'platinum' ? '⭐' : tier === 'gold' ? '🏆' : tier === 'silver' ? '🥈' : '🥉'}
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-white">Tier {tierLabel}</div>
-                    <div className="text-sm text-zinc-400">Punteggio: {totalScore}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-purple-400">{tierProgress}%</div>
-                  <div className="text-xs text-zinc-500">al prossimo livello</div>
-                </div>
-              </div>
-              <div className="w-full bg-zinc-800 rounded-full h-3 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
-                  style={{ width: `${tierProgress}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-zinc-500 mt-2">
-                <span>{totalScore} pt</span>
-                <span>{tier === 'diamond' ? 'MAX' : `${getNextTierScore(tier)} pt`}</span>
-              </div>
+        </div>
+        <div className="col-span-2 flex flex-col justify-center gap-2.5 rounded-np-lg bg-turf-1 p-4">
+          {tier !== 'diamond' ? (
+            <StripedProgressBar
+              progress={tierProgress}
+              title={`Verso ${tier === 'bronze' ? 'Silver' : tier === 'silver' ? 'Gold' : tier === 'gold' ? 'Platinum' : 'Diamond'}`}
+              currentValue={totalScore}
+              totalValue={`/ ${nextTierScore}`}
+              className="bg-transparent p-0"
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Tier massimo raggiunto</span>
+              <span className="mono text-sm font-semibold text-volt">{totalScore} pt</span>
             </div>
+          )}
+        </div>
+      </section>
 
-            {/* Card Partite */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-white">{stats.matches_played}</div>
-                <div className="text-sm text-zinc-400 mt-1">Partite</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-green-400">{stats.matches_won}</div>
-                <div className="text-sm text-zinc-400 mt-1">Vinte</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-red-400">{stats.matches_lost}</div>
-                <div className="text-sm text-zinc-400 mt-1">Perse</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-yellow-400">{stats.win_rate}%</div>
-                <div className="text-sm text-zinc-400 mt-1">Win Rate</div>
-              </div>
+      <section className="grid grid-cols-3 gap-2.5">
+        <div className="flex flex-col gap-1 rounded-np-md bg-turf-1 p-3">
+          <span className="cond text-[11px] text-label">Media pt</span>
+          <span className="mono text-xl font-semibold">{Math.round(stats.average_score)}</span>
+        </div>
+        <div className="flex flex-col gap-1 rounded-np-md bg-turf-1 p-3">
+          <span className="cond text-[11px] text-label">Best</span>
+          <span className="mono text-xl font-semibold">{stats.best_score}</span>
+        </div>
+        <div className="flex flex-col gap-1 rounded-np-md bg-turf-1 p-3">
+          <span className="cond text-[11px] text-label">Abband.</span>
+          <span className="mono text-xl font-semibold text-chalk-2">{stats.matches_abandoned}</span>
+        </div>
+      </section>
+
+      <button
+        type="button"
+        onClick={() => setShowAdvancedStats((v) => !v)}
+        className="flex items-center justify-between rounded-np-lg bg-turf-1 px-4 py-3.5"
+      >
+        <span className="text-[15px] font-semibold">Statistiche avanzate</span>
+        <motion.span animate={{ rotate: showAdvancedStats ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <ChevronDown className="h-5 w-5 text-label" />
+        </motion.span>
+      </button>
+
+      {showAdvancedStats && (
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={{ duration: 0.3 }} className="overflow-hidden">
+          {loadingAdvancedStats ? (
+            <div className="flex justify-center py-10">
+              <BallBounceLoader />
             </div>
-
-            {/* Card Statistiche Dettagliate */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-2xl font-bold text-white">{Math.round(stats.average_score)}</div>
-                <div className="text-xs text-zinc-400 mt-1">Media Punti</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-2xl font-bold text-purple-400">{stats.best_score}</div>
-                <div className="text-xs text-zinc-400 mt-1">Best Score</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-                <div className="text-2xl font-bold text-orange-400">{stats.matches_abandoned}</div>
-                <div className="text-xs text-zinc-400 mt-1">Abbandonate</div>
-              </div>
-            </div>
-
-            {/* Card Streak */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`bg-zinc-800/50 rounded-xl p-4 ${stats.streak_type === 'win' ? 'border border-green-500/50' : stats.streak_type === 'loss' ? 'border border-red-500/50' : ''}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  {stats.streak_type === 'win' ? (
-                    <span className="text-green-400 text-sm">🔥 Serie Vittorie</span>
-                  ) : stats.streak_type === 'loss' ? (
-                    <span className="text-red-400 text-sm">❄️ Serie Sconfitte</span>
-                  ) : (
-                    <span className="text-zinc-400 text-sm">Streak</span>
-                  )}
-                </div>
-                <div className="text-3xl font-bold text-white">{stats.current_streak}</div>
-                <div className="text-xs text-zinc-500 mt-1">attuale</div>
-              </div>
-              <div className="bg-zinc-800/50 rounded-xl p-4">
-                <div className="text-sm text-zinc-400 mb-3">Record Streak</div>
-                <div className="flex justify-between">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-400">🏆</div>
-                    <div className="text-lg font-bold text-green-400">{stats.longest_win_streak}</div>
-                    <div className="text-xs text-zinc-500">vittorie</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-400">📉</div>
-                    <div className="text-lg font-bold text-red-400">{stats.longest_loss_streak}</div>
-                    <div className="text-xs text-zinc-500">sconfitte</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-8 text-zinc-400">
-            <p>Caricamento statistiche...</p>
-          </div>
-        )}
-      </div>
-
-      {/* Advanced Stats Section (Expandable) */}
-      <div className="bg-[#1E1E1E] rounded-3xl p-6 shadow-2xl border border-white/5">
-        <button
-          onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-          className="w-full flex items-center justify-between mb-4"
-        >
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Target className="w-5 h-5 text-cyan-400" />
-            Statistiche Avanzate
-          </h2>
-          <motion.div
-            animate={{ rotate: showAdvancedStats ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </motion.div>
-        </button>
-
-        {showAdvancedStats && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {loadingAdvancedStats ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Win Rate by Difficulty - Card migliorata */}
-                <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 rounded-2xl p-5 border border-cyan-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
-                      <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <AdvancedCard icon={<PieChart className="h-4 w-4" />} title="Distribuzione risultati">
+                {distributionTotal > 0 ? (
+                  <>
+                    <span className="mono -mt-2 text-xs text-label">{distributionTotal} partite</span>
+                    <div className="flex h-4 gap-[3px] overflow-hidden rounded-np-pill bg-ink">
+                      <div className="rounded-l-np-pill bg-volt" style={{ width: `${distByType('Vittorie')?.percentage ?? 0}%` }} />
+                      <div className="bg-ember" style={{ width: `${distByType('Sconfitte')?.percentage ?? 0}%` }} />
+                      <div className="flex-1 bg-turf-3" />
                     </div>
-                    <h3 className="text-base font-semibold text-cyan-300">Win Rate per Difficoltà</h3>
-                  </div>
-                  <div className="space-y-4">
-                    {advancedStats.byDifficulty.length > 0 ? advancedStats.byDifficulty.map((item) => {
-                      const difficultyLabel = item.difficulty === 1 ? 'Facile' : item.difficulty === 2 ? 'Medio' : 'Difficile';
-                      const difficultyColors: Record<number, string> = {
-                        1: 'from-green-500 to-emerald-500',
-                        2: 'from-yellow-500 to-orange-500',
-                        3: 'from-red-500 to-rose-500'
-                      };
-                      return (
-                        <div key={item.difficulty} className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-zinc-300">{difficultyLabel}</span>
-                            <span className="text-lg font-bold text-white">{item.win_rate}%</span>
-                          </div>
-                          <div className="w-full bg-zinc-800 rounded-full h-4 overflow-hidden">
-                            <div
-                              className={`h-full bg-gradient-to-r ${difficultyColors[item.difficulty] || 'from-zinc-500 to-zinc-400'} rounded-full transition-all duration-500`}
-                              style={{ width: `${item.win_rate}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-zinc-500">
-                            <span>{item.matches_won} vittorie</span>
-                            <span>{item.matches_lost} sconfitte</span>
-                          </div>
-                        </div>
-                      );
-                    }) : (
-                      <div className="text-center py-6 text-zinc-500">
-                        <p>Nessuna partita giocata</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Performance vs Opponent Tier - Card migliorata */}
-                <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 rounded-2xl p-5 border border-purple-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                      <Users className="w-4 h-4 text-purple-400" />
-                    </div>
-                    <h3 className="text-base font-semibold text-purple-300">Performance vs Tier Avversario</h3>
-                  </div>
-                  <div className="space-y-4">
-                    {advancedStats.byOpponentTier.length > 0 ? advancedStats.byOpponentTier.map((item) => {
-                      const tierColors: Record<string, string> = {
-                        Bronze: 'from-amber-600 to-yellow-500',
-                        Silver: 'from-gray-400 to-slate-300',
-                        Gold: 'from-yellow-500 to-amber-400',
-                        Platinum: 'from-cyan-500 to-teal-400',
-                        Diamond: 'from-purple-500 to-pink-400',
-                        AI: 'from-red-500 to-orange-400'
-                      };
-                      const tierIcons: Record<string, string> = {
-                        Bronze: '🥉',
-                        Silver: '🥈',
-                        Gold: '🏆',
-                        Platinum: '⭐',
-                        Diamond: '💎',
-                        AI: '🤖'
-                      };
-                      return (
-                        <div key={item.opponent_tier} className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-zinc-300">
-                              {tierIcons[item.opponent_tier] || '❓'} {item.opponent_tier}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { key: 'Vittorie', label: 'Vinte', color: 'var(--color-volt)' },
+                        { key: 'Sconfitte', label: 'Perse', color: 'var(--color-ember)' },
+                        { key: 'Abbandoni', label: 'Abband.', color: '#5E655A' },
+                      ].map(({ key, label, color }) => {
+                        const d = distByType(key);
+                        return (
+                          <div key={key} className="flex flex-col gap-1">
+                            <span className="flex items-center gap-1.5 text-[11px] text-chalk-2">
+                              <span className="h-2 w-2 rounded-sm" style={{ background: color }} />
+                              {label}
                             </span>
-                            <span className="text-lg font-bold text-white">{item.win_rate}%</span>
+                            <span className="mono text-lg font-semibold">
+                              {d?.percentage ?? 0}
+                              <span className="text-xs text-label">%</span>
+                            </span>
+                            <span className="mono text-[11px] text-label">{d?.count ?? 0} partite</span>
                           </div>
-                          <div className="w-full bg-zinc-800 rounded-full h-4 overflow-hidden">
-                            <div
-                              className={`h-full bg-gradient-to-r ${tierColors[item.opponent_tier] || 'from-zinc-500 to-zinc-400'} rounded-full transition-all duration-500`}
-                              style={{ width: `${item.win_rate}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-zinc-500">
-                            <span>{item.matches_won} vittorie</span>
-                            <span>{item.matches_lost} sconfitte</span>
-                          </div>
-                        </div>
-                      );
-                    }) : (
-                      <div className="text-center py-6 text-zinc-500">
-                        <p>Nessuna partita PvP</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Monthly Activity - Card migliorata */}
-                <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-2xl p-5 border border-green-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
-                      <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+                        );
+                      })}
                     </div>
-                    <h3 className="text-base font-semibold text-green-300">Attività Mensile</h3>
-                  </div>
-                  <div className="flex items-end gap-3 h-40">
-                    {advancedStats.monthly.length > 0 ? advancedStats.monthly.slice(-6).map((item, idx) => {
-                      const maxMatches = Math.max(...advancedStats.monthly.map(m => m.matches_played), 1);
-                      const height = Math.max((item.matches_played / maxMatches) * 100, 10);
-                      return (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                          <div className="w-full flex flex-col items-center justify-end h-32">
-                            <div
-                              className="w-full bg-gradient-to-t from-green-600 to-green-400 rounded-t-lg hover:from-green-500 hover:to-green-300 transition-all cursor-pointer"
-                              style={{ height: `${height}%` }}
-                              title={`${item.matches_played} partite, ${item.matches_won} vittorie`}
-                            />
-                          </div>
-                          <span className="text-xs font-medium text-zinc-400">{item.month}</span>
-                          <span className="text-xs text-zinc-500">{item.matches_played}</span>
-                        </div>
-                      );
-                    }) : (
-                      <div className="flex-1 text-center py-6 text-zinc-500">
-                        <p>Nessuna attività recente</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <EmptyState icon={<PieChart className="h-5 w-5" />} title="Nessuna partita giocata" />
+                )}
+              </AdvancedCard>
 
-                {/* Result Distribution - Card migliorata */}
-                <div className="bg-gradient-to-br from-orange-900/30 to-amber-900/30 rounded-2xl p-5 border border-orange-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                      <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                      </svg>
+              <div className="grid grid-cols-2 gap-2.5">
+                <AdvancedCard icon={<BarChart3 className="h-4 w-4" />} title="Per difficoltà">
+                  {advancedStats.byDifficulty.length > 0 ? (
+                    <div className="flex flex-col gap-2.5">
+                      {advancedStats.byDifficulty.map((item) => (
+                        <LabeledBar key={item.difficulty} label={difficultyLabel(item.difficulty)} pct={item.win_rate} />
+                      ))}
                     </div>
-                    <h3 className="text-base font-semibold text-orange-300">Distribuzione Risultati</h3>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    {advancedStats.distribution.length > 0 ? advancedStats.distribution.map((item) => {
-                      const colors: Record<string, string> = {
-                        'Vittorie': 'from-green-600 to-emerald-500',
-                        'Sconfitte': 'from-red-600 to-rose-500',
-                        'Abbandoni': 'from-yellow-600 to-amber-500'
-                      };
-                      const icons: Record<string, string> = {
-                        'Vittorie': '✅',
-                        'Sconfitte': '❌',
-                        'Abbandoni': '⏸️'
-                      };
-                      const labels: Record<string, string> = {
-                        'Vittorie': 'Vinte',
-                        'Sconfitte': 'Perse',
-                        'Abbandoni': 'Abb.'
-                      };
-                      return (
-                        <div key={item.result_type} className="text-center">
-                          <div className="text-3xl mb-2">{icons[item.result_type] || '❓'}</div>
-                          <div className="text-2xl font-bold text-white">{item.percentage}%</div>
-                          <div className="text-sm text-zinc-400">{labels[item.result_type] || item.result_type}</div>
-                          <div className="w-full bg-zinc-800 rounded-full h-2 mt-3 overflow-hidden">
-                            <div
-                              className={`h-full bg-gradient-to-r ${colors[item.result_type] || 'from-zinc-500 to-zinc-400'} rounded-full`}
-                              style={{ width: `${item.percentage}%` }}
-                            />
-                          </div>
-                          <div className="text-xs text-zinc-500 mt-1">{item.count} partite</div>
-                        </div>
-                      );
-                    }) : (
-                      <div className="col-span-3 text-center py-6 text-zinc-500">
-                        <p>Nessuna partita giocata</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  ) : (
+                    <span className="mono text-xs text-label">—</span>
+                  )}
+                </AdvancedCard>
+                <AdvancedCard icon={<Users2 className="h-4 w-4" />} title="Vs tier avversario">
+                  {advancedStats.byOpponentTier.length > 0 ? (
+                    <div className="flex flex-col gap-2.5">
+                      {advancedStats.byOpponentTier.map((item) => (
+                        <LabeledBar key={item.opponent_tier} label={item.opponent_tier} pct={item.win_rate} />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="mono text-xs text-label">—</span>
+                  )}
+                </AdvancedCard>
+              </div>
 
-                {/* Accuracy per Difficoltà (Task 7.2.2) */}
-                <div className="bg-gradient-to-br from-indigo-900/30 to-blue-900/30 rounded-2xl p-5 border border-indigo-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center">
-                      <Crosshair className="w-4 h-4 text-indigo-400" />
-                    </div>
-                    <h3 className="text-base font-semibold text-indigo-300">Precisione per Difficoltà</h3>
-                  </div>
-                  <div className="space-y-4">
-                    {roundStats.accuracy.length > 0 ? roundStats.accuracy.map((item) => (
-                      <div key={item.difficulty} className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-zinc-300">{difficultyLabel(item.difficulty)}</span>
-                          <span className="text-lg font-bold text-white">{item.accuracy_pct}%</span>
-                        </div>
-                        <div className="w-full bg-zinc-800 rounded-full h-4 overflow-hidden">
+              <AdvancedCard icon={<BarChart3 className="h-4 w-4" />} title="Attività mensile">
+                {advancedStats.monthly.length > 0 ? (
+                  <div className="flex h-28 items-end gap-2.5">
+                    {advancedStats.monthly.slice(-6).map((item, idx) => (
+                      <div key={idx} className="flex flex-1 flex-col items-center gap-1.5">
+                        <div className="flex h-20 w-full items-end">
                           <div
-                            className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-500"
-                            style={{ width: `${item.accuracy_pct}%` }}
+                            className="w-full rounded-t-np-sm bg-volt"
+                            style={{ height: `${Math.max((item.matches_played / maxMonthly) * 100, 6)}%` }}
+                            title={`${item.matches_played} partite, ${item.matches_won} vittorie`}
                           />
                         </div>
-                        <div className="flex justify-between text-xs text-zinc-500">
-                          <span>{item.correct_count} corrette</span>
-                          <span>{item.incorrect_count} sbagliate</span>
-                        </div>
+                        <span className="cond text-[10px] text-label">{item.month}</span>
                       </div>
-                    )) : (
-                      <div className="text-center py-6 text-zinc-500">
-                        <p>Nessuna risposta registrata</p>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                </div>
+                ) : (
+                  <EmptyState icon={<BarChart3 className="h-5 w-5" />} title="Nessuna attività registrata" />
+                )}
+              </AdvancedCard>
 
-                {/* Tempo Medio di Risposta (Task 7.2.3) */}
-                <div className="bg-gradient-to-br from-teal-900/30 to-cyan-900/30 rounded-2xl p-5 border border-teal-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-teal-500/20 rounded-lg flex items-center justify-center">
-                      <Timer className="w-4 h-4 text-teal-400" />
-                    </div>
-                    <h3 className="text-base font-semibold text-teal-300">Tempo Medio di Risposta</h3>
-                  </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <AdvancedCard icon={<Timer className="h-4 w-4" />} title="Tempo medio">
                   {overallResponseTime ? (
-                    <div className="space-y-4">
-                      <div className="text-center bg-zinc-800/50 rounded-xl p-4">
-                        <div className="text-3xl font-bold text-white">{(overallResponseTime.avg_response_time_ms / 1000).toFixed(1)}s</div>
-                        <div className="text-xs text-zinc-400 mt-1">media complessiva ({overallResponseTime.sample_count} risposte)</div>
+                    <>
+                      <div className="flex items-baseline gap-1">
+                        <span className="mono text-[32px] font-semibold">{(overallResponseTime.avg_response_time_ms / 1000).toFixed(1)}</span>
+                        <span className="mono text-sm text-chalk-2">s</span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {responseTimeByDifficulty.map((item) => (
-                          <div key={item.difficulty} className="bg-zinc-800/50 rounded-xl p-3 text-center">
-                            <div className="text-lg font-bold text-teal-300">{(item.avg_response_time_ms / 1000).toFixed(1)}s</div>
-                            <div className="text-xs text-zinc-500 mt-1">{difficultyLabel(item.difficulty!)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-zinc-500">
-                      <p>Nessuna risposta registrata</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Giocatori Più Indovinati (Task 7.2.4) */}
-                <div className="bg-gradient-to-br from-rose-900/30 to-pink-900/30 rounded-2xl p-5 border border-rose-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-rose-500/20 rounded-lg flex items-center justify-center">
-                      <Star className="w-4 h-4 text-rose-400" />
-                    </div>
-                    <h3 className="text-base font-semibold text-rose-300">Giocatori Più Indovinati</h3>
-                  </div>
-                  {roundStats.mostGuessed.length > 0 ? (
-                    <div className="space-y-2">
-                      {roundStats.mostGuessed.map((item, idx) => (
-                        <div key={item.player_name} className="flex items-center justify-between bg-zinc-800/50 rounded-xl px-4 py-2.5">
-                          <span className="text-sm text-zinc-300">
-                            <span className="text-zinc-500 mr-2">#{idx + 1}</span>{item.player_name}
-                          </span>
-                          <span className="text-sm font-bold text-rose-300">{item.correct_count}×</span>
+                      <span className="mono text-[11px] text-label">{overallResponseTime.sample_count} risposte</span>
+                      {responseTimeByDifficulty.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {responseTimeByDifficulty.map((item) => (
+                            <span key={item.difficulty} className="mono rounded-np-sm bg-turf-2 px-2 py-1 text-[11px]">
+                              {difficultyLabel(item.difficulty!)} {(item.avg_response_time_ms / 1000).toFixed(1)}s
+                            </span>
+                          ))}
                         </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="mono text-[32px] font-semibold text-chalk-2">0.0s</span>
+                      <span className="mono text-[11px] text-label">0 risposte</span>
+                    </>
+                  )}
+                </AdvancedCard>
+                <AdvancedCard icon={<Crosshair className="h-4 w-4" />} title="Precisione">
+                  {roundStats.accuracy.length > 0 ? (
+                    <div className="flex flex-col gap-2.5">
+                      {roundStats.accuracy.map((item) => (
+                        <LabeledBar key={item.difficulty} label={difficultyLabel(item.difficulty)} pct={item.accuracy_pct} />
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-zinc-500">
-                      <p>Nessun giocatore indovinato ancora</p>
-                    </div>
+                    <span className="mono text-xs text-label">Nessuna risposta</span>
                   )}
-                </div>
-
-                {/* Combinazioni Squadre Più Comuni (Task 7.2.1) */}
-                <div className="bg-gradient-to-br from-violet-900/30 to-fuchsia-900/30 rounded-2xl p-5 border border-violet-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-violet-500/20 rounded-lg flex items-center justify-center">
-                      <Shuffle className="w-4 h-4 text-violet-400" />
-                    </div>
-                    <h3 className="text-base font-semibold text-violet-300">Combinazioni Squadre Più Comuni</h3>
-                  </div>
-                  {roundStats.combos.length > 0 ? (
-                    <div className="space-y-2">
-                      {roundStats.combos.map((item) => (
-                        <div key={`${item.team_a_id}-${item.team_b_id}`} className="flex items-center justify-between bg-zinc-800/50 rounded-xl px-4 py-2.5">
-                          <span className="text-sm text-zinc-300">{item.team_a_name} vs {item.team_b_name}</span>
-                          <span className="text-sm font-bold text-violet-300">{item.times_played}×</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-zinc-500">
-                      <p>Nessuna partita giocata</p>
-                    </div>
-                  )}
-                </div>
+                </AdvancedCard>
               </div>
-            )}
-          </motion.div>
-        )}
-      </div>
+
+              <AdvancedCard icon={<Star className="h-4 w-4" />} title="Giocatori più indovinati">
+                {roundStats.mostGuessed.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    {roundStats.mostGuessed.map((item, idx) => (
+                      <div key={item.player_name} className="flex items-center justify-between rounded-np-sm bg-turf-2 px-3.5 py-2">
+                        <span className="text-[13px]">
+                          <span className="mono mr-2 text-label">#{idx + 1}</span>
+                          {item.player_name}
+                        </span>
+                        <span className="mono text-[13px] font-semibold text-volt">{item.correct_count}×</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Users2 className="h-5 w-5" />} title="Nessun giocatore indovinato ancora" subtitle="Qui comparirà la tua top 5." />
+                )}
+              </AdvancedCard>
+
+              <AdvancedCard icon={<Shuffle className="h-4 w-4" />} title="Combinazioni più comuni">
+                {roundStats.combos.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    {roundStats.combos.map((item) => (
+                      <div key={`${item.team_a_id}-${item.team_b_id}`} className="flex items-center justify-between rounded-np-sm bg-turf-2 px-3.5 py-2">
+                        <span className="text-[13px]">
+                          {item.team_a_name} vs {item.team_b_name}
+                        </span>
+                        <span className="mono text-[13px] font-semibold text-volt">{item.times_played}×</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Shuffle className="h-5 w-5" />} title="Nessuna partita con risposte registrate" />
+                )}
+              </AdvancedCard>
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }

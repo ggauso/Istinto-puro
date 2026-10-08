@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../authStore';
 import { getUserAchievements } from '../../lib/api/achievements';
-import type { Achievement, AchievementCategory, AchievementTier } from '../../types/game';
-import { Trophy, Flame, Gem, Zap, Star, Users, Gamepad2, Swords, Lock, Loader2, type LucideIcon } from 'lucide-react';
-import { motion } from 'motion/react';
+import type { Achievement, AchievementCategory } from '../../types/game';
+import { AchievementBadge } from '../ui/AchievementBadge';
+import { BottomSheet } from '../ui/BottomSheet';
+import { Button } from '../ui/Button';
+import { Chip } from '../ui/Chip';
+import { BallBounceLoader } from '../ui/loaders/BallBounceLoader';
+import { ACHIEVEMENT_ICON_PATHS } from './achievementIcons';
 
-const ICONS: Record<string, LucideIcon> = { Trophy, Flame, Gem, Zap, Star, Users, Gamepad2, Swords };
-
+const CATEGORY_ORDER: AchievementCategory[] = ['wins', 'streak', 'tier', 'skill', 'social', 'dedication', 'tournament'];
 const CATEGORY_LABELS: Record<AchievementCategory, string> = {
   wins: 'Vittorie',
   streak: 'Serie',
@@ -17,101 +20,157 @@ const CATEGORY_LABELS: Record<AchievementCategory, string> = {
   tournament: 'Tornei',
 };
 
-const CATEGORY_ORDER: AchievementCategory[] = ['wins', 'streak', 'tier', 'skill', 'social', 'dedication', 'tournament'];
+function AchievementIcon({ achievement, size }: { achievement: Achievement; size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d={ACHIEVEMENT_ICON_PATHS[achievement.code]} />
+    </svg>
+  );
+}
 
-const TIER_STYLES: Record<AchievementTier, { badgeBg: string; badgeText: string; iconBg: string; iconText: string; border: string }> = {
-  bronze: { badgeBg: 'bg-orange-900/40', badgeText: 'text-orange-300', iconBg: 'bg-orange-500/20', iconText: 'text-orange-400', border: 'border-orange-500/30' },
-  silver: { badgeBg: 'bg-zinc-600/40', badgeText: 'text-zinc-200', iconBg: 'bg-zinc-400/20', iconText: 'text-zinc-200', border: 'border-zinc-400/30' },
-  gold: { badgeBg: 'bg-yellow-900/40', badgeText: 'text-yellow-300', iconBg: 'bg-yellow-500/20', iconText: 'text-yellow-400', border: 'border-yellow-500/30' },
-  platinum: { badgeBg: 'bg-cyan-900/40', badgeText: 'text-cyan-200', iconBg: 'bg-cyan-400/20', iconText: 'text-cyan-300', border: 'border-cyan-400/30' },
-};
+function formatUnlockedDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 export function ProfileAchievementsTab() {
   const { user } = useAuthStore();
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState<AchievementCategory | 'all'>('all');
+  const [selected, setSelected] = useState<Achievement | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
-    getUserAchievements(user.id)
-      .then(setAchievements)
-      .finally(() => setLoading(false));
+    getUserAchievements(user.id).then((data) => {
+      setAchievements(data);
+      setLoading(false);
+    });
   }, [user]);
 
   if (!user) return null;
-
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+      <div className="flex justify-center py-16">
+        <BallBounceLoader />
       </div>
     );
   }
 
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
-  const byCategory = CATEGORY_ORDER.map((category) => ({
-    category,
-    items: achievements.filter((a) => a.category === category),
-  })).filter((group) => group.items.length > 0);
+  const totalCount = achievements.length;
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const offset = totalCount > 0 ? circumference * (1 - unlockedCount / totalCount) : circumference;
+
+  const groups = CATEGORY_ORDER.map((cat) => ({
+    category: cat,
+    items: achievements.filter((a) => a.category === cat),
+  })).filter((g) => (category === 'all' || category === g.category) && g.items.length > 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between bg-zinc-800/50 rounded-xl px-4 py-3">
-        <span className="text-zinc-300 text-sm font-medium">Achievement sbloccati</span>
-        <span className="text-white font-bold">{unlockedCount} / {achievements.length}</span>
-      </div>
-
-      {byCategory.map((group) => (
-        <div key={group.category} className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            {CATEGORY_LABELS[group.category]}
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {group.items.map((achievement, index) => {
-              const Icon = ICONS[achievement.icon] || Trophy;
-              const tierStyle = TIER_STYLES[achievement.tier] || TIER_STYLES.bronze;
-              return (
-                <motion.div
-                  key={achievement.code}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className={`relative rounded-xl p-4 border flex flex-col items-center text-center gap-2 ${
-                    achievement.unlocked
-                      ? `bg-gradient-to-br from-zinc-800/60 to-zinc-900/60 ${tierStyle.border}`
-                      : 'bg-zinc-800/40 border-zinc-700/50'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-2 right-2 text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                      achievement.unlocked ? `${tierStyle.badgeBg} ${tierStyle.badgeText}` : 'bg-zinc-700/50 text-zinc-500'
-                    }`}
-                  >
-                    {achievement.tier}
-                  </span>
-                  <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                      achievement.unlocked ? `${tierStyle.iconBg} ${tierStyle.iconText}` : 'bg-zinc-700/50 text-zinc-500'
-                    }`}
-                  >
-                    {achievement.unlocked ? <Icon className="w-6 h-6" /> : <Lock className="w-5 h-5" />}
-                  </div>
-                  <div className={`font-semibold text-sm ${achievement.unlocked ? 'text-white' : 'text-zinc-500'}`}>
-                    {achievement.label}
-                  </div>
-                  <div className="text-xs text-zinc-500">{achievement.description}</div>
-                  {achievement.unlocked && achievement.unlockedAt && (
-                    <div className="text-[10px] text-zinc-500/70 mt-1">
-                      Sbloccato il {new Date(achievement.unlockedAt).toLocaleDateString('it-IT')}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
+    <div className="flex flex-col gap-5">
+      <section className="flex items-center gap-4 rounded-np-hero border border-white/7 bg-turf-1 p-[18px]">
+        <div className="relative h-24 w-24 shrink-0">
+          <svg width="96" height="96" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r={radius} fill="none" stroke="var(--color-turf-3)" strokeWidth="10" />
+            <circle
+              className="ring"
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              stroke="var(--color-volt)"
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              style={{ strokeDashoffset: offset }}
+              transform="rotate(-90 50 50)"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="disp text-[28px]">{unlockedCount}</span>
+            <span className="mono text-[11px] text-chalk-2">/ {totalCount}</span>
           </div>
         </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-base font-bold">{unlockedCount === totalCount ? 'Tutti sbloccati!' : 'Il prossimo è vicino'}</span>
+          <span className="text-[13px] leading-[1.45] text-chalk-2">
+            {unlockedCount === totalCount
+              ? 'Hai completato l\'intera collezione di trofei.'
+              : 'Continua a giocare per sbloccarne altri.'}
+          </span>
+        </div>
+      </section>
+
+      <div className="rail -mx-4 flex gap-1.5 overflow-x-auto px-4">
+        <Chip selected={category === 'all'} onClick={() => setCategory('all')}>
+          Tutti
+        </Chip>
+        {CATEGORY_ORDER.map((cat) => (
+          <Chip key={cat} selected={category === cat} onClick={() => setCategory(cat)}>
+            {CATEGORY_LABELS[cat]}
+          </Chip>
+        ))}
+      </div>
+
+      {groups.map((group) => (
+        <section key={group.category} className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between">
+            <span className="cond text-xs text-label">{CATEGORY_LABELS[group.category]}</span>
+            <span className="mono text-[11px] text-label">
+              {group.items.filter((a) => a.unlocked).length} / {group.items.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {group.items.map((achievement) => (
+              <button
+                key={achievement.code}
+                type="button"
+                onClick={() => setSelected(achievement)}
+                className={`press flex flex-col items-center gap-2 rounded-np-lg border bg-turf-1 px-1.5 py-3.5 text-center ${
+                  achievement.unlocked ? 'border-white/[.08]' : 'border-white/[.06]'
+                }`}
+              >
+                <AchievementBadge
+                  tier={achievement.tier}
+                  state={achievement.unlocked ? 'unlocked' : 'locked'}
+                  icon={<AchievementIcon achievement={achievement} size={26} />}
+                  size={60}
+                />
+                <span className={`text-xs font-semibold leading-tight ${achievement.unlocked ? 'text-chalk' : 'text-chalk-2'}`}>
+                  {achievement.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
       ))}
+
+      <BottomSheet open={!!selected} onClose={() => setSelected(null)}>
+        {selected && (
+          <div className="flex flex-col items-center gap-3.5 px-6 pb-8 pt-2 text-center">
+            <div className="mt-2">
+              <AchievementBadge
+                tier={selected.tier}
+                state={selected.unlocked ? 'unlocked' : 'locked'}
+                icon={<AchievementIcon achievement={selected} size={48} />}
+                size={84}
+              />
+            </div>
+            <span className="cond text-xs" style={{ color: selected.unlocked ? undefined : 'var(--color-label)' }}>
+              {selected.tier} · {selected.unlocked && selected.unlockedAt ? `Sbloccato il ${formatUnlockedDate(selected.unlockedAt)}` : 'Da sbloccare'}
+            </span>
+            <h2 className="disp text-2xl" style={{ fontStretch: '110%' }}>
+              {selected.label}
+            </h2>
+            <p className="text-[15px] text-chalk-2">{selected.description}</p>
+            <Button variant="chalk" className="mt-1.5 w-full" onClick={() => setSelected(null)}>
+              Chiudi
+            </Button>
+          </div>
+        )}
+      </BottomSheet>
     </div>
   );
 }
