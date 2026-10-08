@@ -74,6 +74,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           email,
           password,
           options: {
+            emailRedirectTo: appUrl('/'),
             data: {
               first_name: firstName,
               last_name: lastName,
