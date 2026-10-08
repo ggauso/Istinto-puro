@@ -107,7 +107,18 @@ async function importData() {
   }
 
   console.log('🚀 Inizio importazione dati da API-Football a Supabase...');
-  
+
+  // Verifica preventiva di connessione a Supabase: senza questo controllo, se il DB
+  // non è raggiungibile (es. Docker/colima spento) ogni upsert fallisce silenziosamente
+  // (viene loggato e si passa oltre), lo script arriva comunque in fondo al ciclo,
+  // stampa "completata con successo" ed elimina il checkpoint senza aver scritto nulla.
+  const { error: connError } = await supabase!.from('teams').select('id').limit(1);
+  if (connError) {
+    console.error(`❌ Impossibile raggiungere Supabase (${supabaseUrl}): ${connError.message}`);
+    console.error('Controlla che il DB/Docker sia avviato prima di rilanciare l\'import.');
+    return;
+  }
+
   let state = loadState();
   let importedSquads = loadImportedSquads();
   console.log(`📂 Stato ripristinato: Stagione Index ${state.seasonIndex}, Lega Index ${state.leagueIndex}, Team Index ${state.teamIndex}, Pagina ${state.page}`);
