@@ -96,11 +96,16 @@ export default function App() {
   // Global polling for friend challenges (every 30 seconds)
   const shownChallengesRef = useRef<Set<string>>(new Set());
   const { user } = useAuthStore();
+  const navItems = user ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== 'profile');
 
   // Clear shown challenges when user changes
   useEffect(() => {
     shownChallengesRef.current.clear();
   }, [user]);
+
+  useEffect(() => {
+    if (!user && currentScreen === 'profile') setCurrentScreen('home');
+  }, [user, currentScreen]);
 
   useEffect(() => {
     if (!user) return;
@@ -381,7 +386,7 @@ export default function App() {
     setCurrentScreen(key);
   };
 
-  const showBottomNav = NAV_ITEMS.some((item) => item.key === currentScreen);
+  const showBottomNav = navItems.some((item) => item.key === currentScreen);
 
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-[#FFD700] selection:text-black">
@@ -431,7 +436,7 @@ export default function App() {
       )}
 
       {showBottomNav && (
-        <BottomNavBar items={NAV_ITEMS} active={currentScreen} onChange={handleBottomNav} />
+        <BottomNavBar items={navItems} active={currentScreen} onChange={handleBottomNav} />
       )}
 
       {/*

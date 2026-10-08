@@ -68,24 +68,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async () => {
     if (get().initialized) return;
 
-    let session = null;
+    let user: User | null = null;
     try {
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
       const response = await Promise.race([supabase.auth.getSession(), timeoutPromise]) as any;
-      session = response?.data?.session;
+      if (response?.data?.session) {
+        const userTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
+        const { data, error } = await Promise.race([supabase.auth.getUser(), userTimeout]) as any;
+        if (error) {
+          console.warn('Sessione locale non valida, utente trattato come non loggato:', error.message);
+          if (error.status === 401 || error.status === 403) {
+            await supabase.auth.signOut({ scope: 'local' });
+          }
+        } else {
+          user = data?.user || null;
+        }
+      }
     } catch (e) {
-      console.warn('getSession timeout during initialize, continuing without session');
+      console.warn('Validazione sessione fallita durante initialize, utente trattato come non loggato');
     }
-    
-    set({ user: session?.user || null, initialized: true });
-    
-    if (session?.user) {
-      await get().fetchProfile(session.user.id);
+
+    set({ user, initialized: true });
+
+    if (user) {
+      await get().fetchProfile(user.id);
     }
 
     set({ loading: false });
 
     supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      if (event === 'INITIAL_SESSION') return;
       set({ user: currentSession?.user || null });
       
       // Fetch profile on sign in, token refresh or password update
