@@ -99,7 +99,7 @@ export default function App() {
   // Global polling for friend challenges (every 30 seconds)
   const shownChallengesRef = useRef<Set<string>>(new Set());
   const { user } = useAuthStore();
-  const navItems = user ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== 'profile');
+  const navItems = user ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== 'profile' && item.key !== 'tournaments');
 
   // Clear shown challenges when user changes
   useEffect(() => {
@@ -107,7 +107,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user && currentScreen === 'profile') setCurrentScreen('home');
+    if (!user && (currentScreen === 'profile' || currentScreen === 'tournaments')) setCurrentScreen('home');
   }, [user, currentScreen]);
 
   useEffect(() => {
