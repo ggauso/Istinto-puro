@@ -104,8 +104,6 @@ export async function getUserInfo(userId: string): Promise<{
   user: null | {
     id: string
     nickname: string | null
-    firstName: string | null
-    lastName: string | null
     tier: string | null
     totalScore: number
   }
@@ -136,8 +134,6 @@ export async function getUserInfo(userId: string): Promise<{
       user: {
         id: row.id,
         nickname: row.nickname,
-        firstName: row.first_name,
-        lastName: row.last_name,
         tier: row.tier,
         totalScore: row.total_score
       },

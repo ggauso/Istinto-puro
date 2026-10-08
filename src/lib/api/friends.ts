@@ -15,7 +15,6 @@ export async function searchUsers(nickname: string): Promise<{
   users: Array<{
     id: string
     nickname: string | null
-    firstName: string | null
     tier: string
     totalScore: number
   }>
@@ -31,7 +30,6 @@ export async function searchUsers(nickname: string): Promise<{
       users: data?.map((u: any) => ({
         id: u.id,
         nickname: u.nickname,
-        firstName: u.first_name,
         tier: u.tier,
         totalScore: u.total_score
       })) || [],
@@ -132,7 +130,6 @@ export async function getFriends(): Promise<{
     id: string
     friendId: string
     nickname: string | null
-    firstName: string | null
     tier: string
     totalScore: number
     isOnline: boolean
@@ -151,7 +148,6 @@ export async function getFriends(): Promise<{
         id: f.id,
         friendId: f.friend_id,
         nickname: f.nickname,
-        firstName: f.first_name,
         tier: f.tier,
         totalScore: f.total_score,
         isOnline: f.is_online,
@@ -177,7 +173,6 @@ export async function getPendingFriendRequests(): Promise<{
     id: string
     fromUserId: string
     nickname: string | null
-    firstName: string | null
     tier: string
     createdAt: string
   }>
@@ -194,7 +189,6 @@ export async function getPendingFriendRequests(): Promise<{
         id: r.id,
         fromUserId: r.from_user_id,
         nickname: r.nickname,
-        firstName: r.first_name,
         tier: r.tier,
         createdAt: r.created_at
       })) || [],

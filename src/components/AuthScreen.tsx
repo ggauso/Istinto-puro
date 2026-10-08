@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { checkEmailLocked, recordLoginAttempt } from '../lib/api/auth-security';
 import { recordAuthAudit } from '../lib/api/audit';
-import { ArrowLeft, Mail, Lock, User, Calendar, Trophy, Eye, EyeOff, Check } from 'lucide-react';
+import { ArrowLeft, AtSign, Mail, Lock, User, Calendar, Trophy, Eye, EyeOff, Check } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Field } from './ui/Field';
 import { Checkbox } from './ui/Checkbox';
-import { appUrl } from '../lib/paths';
+import { appPath, appUrl } from '../lib/paths';
 import { Button } from './ui/Button';
 
 interface AuthScreenProps {
@@ -42,6 +42,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [nickname, setNickname] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [favoriteTeam, setFavoriteTeam] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -70,6 +71,11 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
           throw new Error('Devi accettare la privacy policy per registrarti.');
         }
 
+        const cleanNickname = nickname.trim();
+        if (!/^[A-Za-z0-9_.-]{3,20}$/.test(cleanNickname)) {
+          throw new Error('Il nickname deve avere da 3 a 20 caratteri: lettere, numeri, punto, trattino o underscore.');
+        }
+
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -78,6 +84,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
             data: {
               first_name: firstName,
               last_name: lastName,
+              nickname: cleanNickname,
               birth_date: birthDate,
               favorite_team: favoriteTeam,
               privacy_accepted: privacyAccepted
@@ -245,6 +252,17 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         <form onSubmit={handleAuth} className="flex flex-col gap-4">
           {mode === 'register' && (
             <>
+              <Field
+                icon={<AtSign className="h-[18px] w-[18px]" />}
+                required
+                minLength={3}
+                maxLength={20}
+                autoComplete="nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Nickname · l'unico nome visibile agli altri"
+              />
+
               <div className="grid grid-cols-2 gap-3">
                 <Field
                   icon={<User className="h-[18px] w-[18px]" />}
@@ -351,7 +369,21 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
               checked={privacyAccepted}
               onChange={(e) => setPrivacyAccepted(e.target.checked)}
               className="pt-1"
-              label="Accetto i termini di servizio e la privacy policy per il trattamento dei dati personali."
+              label={
+                <>
+                  Accetto i{' '}
+                  <a
+                    href={appPath('/privacy')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-semibold text-volt underline"
+                  >
+                    termini di servizio e la privacy policy
+                  </a>{' '}
+                  per il trattamento dei dati personali.
+                </>
+              }
             />
           )}
 

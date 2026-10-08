@@ -24,6 +24,7 @@ import { BottomNavBar } from './components/ui/BottomNavBar';
 import { Toast } from './components/ui/Toast';
 import { appPath, currentAppPath } from './lib/paths';
 import { Button } from './components/ui/Button';
+import { PrivacyScreen } from './components/PrivacyScreen';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Gioca', icon: <Goal className="h-5 w-5" /> },
@@ -63,7 +64,7 @@ function writePendingAchievementToasts(codes: AchievementCode[]): void {
 export default function App() {
   const { status, newlyUnlockedAchievements } = useGameStore();
   const { initialize, loading } = useAuthStore();
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge' | 'tournaments'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge' | 'tournaments' | 'privacy'>('home');
   const [profileInitialTab, setProfileInitialTab] = useState<'stats' | 'friends' | 'achievements' | 'history'>('stats');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
@@ -234,7 +235,9 @@ export default function App() {
 
     // Check if URL is a challenge link (istintopuro.com/sfida/TOKEN)
     const path = currentAppPath();
-    if (path.startsWith('/sfida/')) {
+    if (path.replace(/\/$/, '') === '/privacy') {
+      setCurrentScreen('privacy');
+    } else if (path.startsWith('/sfida/')) {
       const token = path.replace('/sfida/', '');
       if (token && token.length >= 8) {
         setChallengeToken(token);
@@ -399,6 +402,14 @@ export default function App() {
             setCurrentScreen('home');
           }}
           onAcceptChallenge={handleAcceptChallenge}
+        />
+      )}
+      {currentScreen === 'privacy' && (
+        <PrivacyScreen
+          onBack={() => {
+            window.history.pushState({}, '', appPath('/'));
+            setCurrentScreen('home');
+          }}
         />
       )}
       {currentScreen === 'auth' && <AuthScreen

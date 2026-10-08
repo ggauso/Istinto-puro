@@ -66,7 +66,7 @@ export const createMatchmakingSlice: StateCreator<GameState, [], [], Matchmaking
           // Invia un broadcast per avvisare l'avversario prima di uscire dal canale
           const currentUser = useAuthStore.getState().user;
           const currentUserId = currentUser?.id || null;
-          const currentNickname = currentUser?.nickname || currentUser?.first_name || null;
+          const currentNickname = useAuthStore.getState().profile?.nickname || null;
           channel.send({
             type: 'broadcast',
             event: 'match_found',
@@ -91,7 +91,7 @@ export const createMatchmakingSlice: StateCreator<GameState, [], [], Matchmaking
           await channel.track({
             playerId,
             userId: user?.id || null,
-            nickname: user?.nickname || user?.first_name || null,
+            nickname: useAuthStore.getState().profile?.nickname || null,
             status: 'searching'
           });
         }
@@ -110,10 +110,10 @@ export const createMatchmakingSlice: StateCreator<GameState, [], [], Matchmaking
     if (opponentUserId && state.gameMode === 'pvp') {
       console.log('Fetching opponent info from DB for:', opponentUserId);
       const { user: oppUser, success } = await getUserInfo(opponentUserId);
-      console.log('getUserInfo result:', { success, fields: oppUser ? {nickname: oppUser.nickname, firstName: oppUser.firstName, lastName: oppUser.lastName} : null });
+      console.log('getUserInfo result:', { success, fields: oppUser ? {nickname: oppUser.nickname} : null });
       if (oppUser) {
         opponentInfoFetched = {
-          nickname: oppUser.nickname || oppUser.firstName || oppUser.lastName || opponentNicknameFromPresence || 'Avversario',
+          nickname: oppUser.nickname || opponentNicknameFromPresence || 'Avversario',
           tier: oppUser.tier || 'bronze'
         };
       } else {

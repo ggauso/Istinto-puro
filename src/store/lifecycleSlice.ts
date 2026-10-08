@@ -103,7 +103,7 @@ export const createLifecycleSlice: StateCreator<GameState, [], [], LifecycleSlic
 
     // Determina il nome del giocatore
     const { profile } = useAuthStore.getState();
-    const playerName = profile?.first_name || generateGuestName();
+    const playerName = profile?.nickname || generateGuestName();
 
     // Determina nome e tier dell'avversario
     const opponentName = gameMode === 'ai' ? 'AI' : (match.opponent_name || 'Avversario');

@@ -265,29 +265,23 @@ export async function getFriendChallengeByRoomId(roomId: string): Promise<{
     if (error) throw error
 
     if (challengeData) {
-      // Get creator profile
-      const { data: creatorProfile } = await supabase
-        .from('profiles')
-        .select('nickname, tier, first_name')
-        .eq('id', challengeData.creator_id)
-        .single()
-
-      // Get opponent profile
-      const { data: opponentProfile } = await supabase
-        .from('profiles')
-        .select('nickname, tier, first_name')
-        .eq('id', challengeData.opponent_id)
-        .single()
+      // Get creator/opponent public info (nickname only)
+      const [creatorRes, opponentRes] = await Promise.all([
+        supabase.rpc('get_user_info', { p_user_id: challengeData.creator_id }),
+        supabase.rpc('get_user_info', { p_user_id: challengeData.opponent_id }),
+      ])
+      const creatorProfile = creatorRes.data?.[0]
+      const opponentProfile = opponentRes.data?.[0]
 
       return {
         success: true,
         challenge: {
           id: challengeData.id,
           creator_id: challengeData.creator_id,
-          creator_nickname: creatorProfile?.nickname || creatorProfile?.first_name || 'Sfidante',
+          creator_nickname: creatorProfile?.nickname || 'Sfidante',
           creator_tier: creatorProfile?.tier || 'bronze',
           opponent_id: challengeData.opponent_id,
-          opponent_nickname: opponentProfile?.nickname || opponentProfile?.first_name || 'Avversario',
+          opponent_nickname: opponentProfile?.nickname || 'Avversario',
           opponent_tier: opponentProfile?.tier || 'bronze',
           difficulty: challengeData.difficulty,
           league: challengeData.league,
