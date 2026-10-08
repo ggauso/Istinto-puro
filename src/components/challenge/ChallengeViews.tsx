@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Field } from '../ui/Field';
 import { EmptyState } from '../ui/EmptyState';
 import { BallBounceLoader } from '../ui/loaders/BallBounceLoader';
+import { appUrl } from '../../lib/paths';
 import { cn } from '../../lib/cn';
 
 function formatDate(dateStr: string) {
@@ -162,7 +163,7 @@ export function ChallengeExpiredView({ onBack }: { onBack: () => void }) {
 }
 
 export function ChallengeCreatorPendingView({ challenge, token, onBack }: { challenge: ChallengeViewState; token: string; onBack: () => void }) {
-  const link = `${window.location.origin}/sfida/${token}`;
+  const link = appUrl(`/sfida/${token}`);
 
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-ink pb-10 text-chalk">

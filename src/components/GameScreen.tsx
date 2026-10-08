@@ -13,6 +13,7 @@ import { Button } from './ui/Button';
 import { BallBounceLoader } from './ui/loaders/BallBounceLoader';
 import { ScoreboardLoader } from './ui/loaders/ScoreboardLoader';
 import { AlertDialog } from './ui/AlertDialog';
+import { appPath } from '../lib/paths';
 import { AlertIconBadge } from './ui/AlertIconBadge';
 import { motion } from 'motion/react';
 import { Flag, Bot, Flame, Watch, ArrowRight, Home, RotateCcw, X, Check } from 'lucide-react';
@@ -222,7 +223,7 @@ export function GameScreen() {
       const timer = setTimeout(() => {
         resetGame();
         // Redirect to home
-        window.location.href = '/';
+        window.location.href = appPath('/');
       }, 10000);
       return () => clearTimeout(timer);
     }
@@ -276,7 +277,7 @@ export function GameScreen() {
             aria-label="Torna alla home"
             onClick={() => {
               resetGame();
-              window.location.href = '/';
+              window.location.href = appPath('/');
             }}
             className="btn flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-turf-1 text-chalk"
           >
@@ -550,7 +551,7 @@ export function GameScreen() {
                 // smonterebbe la pagina (e la connessione realtime) senza
                 // garanzia che il messaggio sia già partito.
                 await abandonMatch();
-                window.location.href = '/';
+                window.location.href = appPath('/');
               }}
             >
               Abbandona

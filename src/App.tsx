@@ -22,6 +22,7 @@ import { ACHIEVEMENT_LABELS } from './types/game';
 import { Award, X, Goal, BarChart3, Trophy, User } from 'lucide-react';
 import { BottomNavBar } from './components/ui/BottomNavBar';
 import { Toast } from './components/ui/Toast';
+import { appPath, currentAppPath } from './lib/paths';
 import { Button } from './components/ui/Button';
 
 const NAV_ITEMS = [
@@ -112,7 +113,7 @@ export default function App() {
         }
 
         // Skip if we're already on a challenge page
-        const currentPath = window.location.pathname;
+        const currentPath = currentAppPath();
         if (currentPath.startsWith('/sfida/')) {
           return;
         }
@@ -160,7 +161,7 @@ export default function App() {
             shownChallengesRef.current.add(`accepted_${latestAccepted.id}`);
 
             // Redirect to /sfida/room_id
-            window.location.href = `/sfida/${latestAccepted.room_id}`;
+            window.location.href = appPath(`/sfida/${latestAccepted.room_id}`);
           }
         }
       } catch (err) {
@@ -227,7 +228,7 @@ export default function App() {
     initialize();
 
     // Check if URL is a challenge link (istintopuro.com/sfida/TOKEN)
-    const path = window.location.pathname;
+    const path = currentAppPath();
     if (path.startsWith('/sfida/')) {
       const token = path.replace('/sfida/', '');
       if (token && token.length >= 8) {
@@ -389,7 +390,7 @@ export default function App() {
           token={challengeToken}
           onBack={() => {
             // Use history API to change URL without reload, then navigate via React state
-            window.history.pushState({}, '', '/');
+            window.history.pushState({}, '', appPath('/'));
             setCurrentScreen('home');
           }}
           onAcceptChallenge={handleAcceptChallenge}
@@ -500,7 +501,7 @@ export default function App() {
                         const result = await acceptFriendChallenge(toastWithAction.challengeId);
                         if (result && result.success) {
                           // Accepted! Redirect to /sfida/room_id (BOTH players will go here)
-                          window.location.href = `/sfida/${toastWithAction.challengeRoomId}`;
+                          window.location.href = appPath(`/sfida/${toastWithAction.challengeRoomId}`);
                         }
                       } catch (err) {
                         console.error('Error accepting challenge:', err);

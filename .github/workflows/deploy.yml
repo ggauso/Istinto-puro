@@ -27,12 +27,6 @@ jobs:
 
       - run: npm ci
 
-      - name: TEMP check secrets
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: echo "URL length ${#VITE_SUPABASE_URL}, KEY length ${#VITE_SUPABASE_ANON_KEY}"
-
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

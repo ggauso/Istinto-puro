@@ -6,6 +6,7 @@ import { ArrowLeft, Mail, Lock, User, Calendar, Trophy, Eye, EyeOff, Check } fro
 import { motion } from 'motion/react';
 import { Field } from './ui/Field';
 import { Checkbox } from './ui/Checkbox';
+import { appUrl } from '../lib/paths';
 import { Button } from './ui/Button';
 
 interface AuthScreenProps {
@@ -94,7 +95,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
         }
       } else if (mode === 'forgot_password') {
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin
+          redirectTo: appUrl("/")
         });
 
         if (resetError) throw resetError;
@@ -187,7 +188,7 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: appUrl("/")
         }
       });
       if (error) throw error;

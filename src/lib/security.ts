@@ -7,6 +7,7 @@
  * - Logout everywhere (revoke all sessions)
  */
 
+import { appPath, appUrl } from './paths';
 import { supabase } from './supabase';
 
 /**
@@ -90,7 +91,7 @@ export async function sendPasswordResetEmail(email: string): Promise<{
 }> {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: appUrl("/reset-password"),
     });
 
     if (error) {
@@ -143,11 +144,11 @@ export async function performFullLogout(): Promise<void> {
     sessionStorage.clear();
 
     // Ricarica la pagina per resettare tutto
-    window.location.href = '/';
+    window.location.href = appPath('/');
   } catch (error) {
     console.error('Errore durante il logout:', error);
     // Forza comunque il redirect
-    window.location.href = '/';
+    window.location.href = appPath('/');
   }
 }
 

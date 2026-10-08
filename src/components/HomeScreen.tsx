@@ -12,6 +12,7 @@ import { BottomSheet } from './ui/BottomSheet';
 import { RadarLoader } from './ui/loaders/RadarLoader';
 import { TierBadge } from './TierBadge';
 import { LeagueFlag, type LeagueKey } from './ui/LeagueFlag';
+import { appPath, appUrl } from '../lib/paths';
 import { cn } from '../lib/cn';
 
 const LEAGUES: { id: number | null; name: string }[] = [
@@ -85,7 +86,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
         setPendingChallengeToken(null);
 
         // Navigate to the challenge page where the game will start
-        window.location.href = `/sfida/${pendingChallengeToken}`;
+        window.location.href = appPath(`/sfida/${pendingChallengeToken}`);
       }
     }, 5000);
 
@@ -122,7 +123,7 @@ export function HomeScreen({ onNavigateToAuth, onNavigateToProfile }: HomeScreen
   };
 
   const isSearching = status === 'searching';
-  const challengeLink = challengeToken ? `${window.location.origin}/sfida/${challengeToken}` : '';
+  const challengeLink = challengeToken ? appUrl(`/sfida/${challengeToken}`) : '';
   const displayName = profile?.first_name || user?.email?.split('@')[0] || 'Ospite';
   const selectedLeagueName = LEAGUES.find((l) => l.id === selectedLeague)?.name ?? LEAGUES[0].name;
 

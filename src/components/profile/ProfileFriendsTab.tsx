@@ -10,6 +10,7 @@ import { RowAvatar } from '../ui/ListRow';
 import { EmptyState } from '../ui/EmptyState';
 import { ConfirmSheet } from '../ui/ConfirmSheet';
 import { Toast } from '../ui/Toast';
+import { appPath } from '../../lib/paths';
 import { PitchSkeleton } from '../ui/loaders/PitchSkeleton';
 import { Search, UserPlus, Check, X, Trash2, Users, Zap } from 'lucide-react';
 
@@ -125,7 +126,7 @@ export function ProfileFriendsTab({
       // Naviga alla sfida come fa il toast globale in App.tsx - senza questo
       // redirect l'utente resta bloccato sulla scheda profilo e la partita
       // non parte mai per lui (l'avversario/creatore non ha modo di saperlo).
-      window.location.href = `/sfida/${result.roomId}`;
+      window.location.href = appPath(`/sfida/${result.roomId}`);
     } else {
       showToast(result.error || "Errore nell'accettazione della sfida", 'error');
     }
