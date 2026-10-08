@@ -11,6 +11,7 @@ import { Button } from './ui/Button';
 
 interface AuthScreenProps {
   onBack: () => void;
+  onOpenPrivacy: () => void;
   isPasswordRecovery?: boolean;
   onPasswordRecoveryDone?: () => void;
 }
@@ -28,7 +29,7 @@ function PasswordToggle({ show, onToggle }: { show: boolean; onToggle: () => voi
   );
 }
 
-export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone }: AuthScreenProps) {
+export function AuthScreen({ onBack, onOpenPrivacy, isPasswordRecovery, onPasswordRecoveryDone }: AuthScreenProps) {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot_password' | 'update_password'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -374,9 +375,11 @@ export function AuthScreen({ onBack, isPasswordRecovery, onPasswordRecoveryDone 
                   Accetto i{' '}
                   <a
                     href={appPath('/privacy')}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onOpenPrivacy();
+                    }}
                     className="font-semibold text-volt underline"
                   >
                     termini di servizio e la privacy policy

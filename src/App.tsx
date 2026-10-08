@@ -25,6 +25,7 @@ import { Toast } from './components/ui/Toast';
 import { appPath, currentAppPath } from './lib/paths';
 import { Button } from './components/ui/Button';
 import { PrivacyScreen } from './components/PrivacyScreen';
+import { BallBounceLoader } from './components/ui/loaders/BallBounceLoader';
 
 const NAV_ITEMS = [
   { key: 'home', label: 'Gioca', icon: <Goal className="h-5 w-5" /> },
@@ -65,6 +66,7 @@ export default function App() {
   const { status, newlyUnlockedAchievements } = useGameStore();
   const { initialize, loading } = useAuthStore();
   const [currentScreen, setCurrentScreen] = useState<'home' | 'auth' | 'profile' | 'leaderboard' | 'challenge' | 'tournaments' | 'privacy'>('home');
+  const [privacyFromAuth, setPrivacyFromAuth] = useState(false);
   const [profileInitialTab, setProfileInitialTab] = useState<'stats' | 'friends' | 'achievements' | 'history'>('stats');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
@@ -294,8 +296,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#121212] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]"></div>
+      <div className="flex min-h-screen items-center justify-center bg-ink">
+        <BallBounceLoader />
       </div>
     );
   }
@@ -408,18 +410,28 @@ export default function App() {
         <PrivacyScreen
           onBack={() => {
             window.history.pushState({}, '', appPath('/'));
-            setCurrentScreen('home');
+            setCurrentScreen(privacyFromAuth ? 'auth' : 'home');
+            setPrivacyFromAuth(false);
           }}
         />
       )}
-      {currentScreen === 'auth' && <AuthScreen
-        onBack={() => setCurrentScreen('home')}
-        isPasswordRecovery={isPasswordRecovery}
-        onPasswordRecoveryDone={() => {
-          setIsPasswordRecovery(false);
-          setCurrentScreen('home');
-        }}
-      />}
+      {(currentScreen === 'auth' || (currentScreen === 'privacy' && privacyFromAuth)) && (
+        <div className={currentScreen === 'privacy' ? 'hidden' : undefined}>
+          <AuthScreen
+            onBack={() => setCurrentScreen('home')}
+            onOpenPrivacy={() => {
+              window.history.pushState({}, '', appPath('/privacy'));
+              setPrivacyFromAuth(true);
+              setCurrentScreen('privacy');
+            }}
+            isPasswordRecovery={isPasswordRecovery}
+            onPasswordRecoveryDone={() => {
+              setIsPasswordRecovery(false);
+              setCurrentScreen('home');
+            }}
+          />
+        </div>
+      )}
       {currentScreen === 'profile' && (
         <ProfileScreen
           onBack={() => setCurrentScreen('home')}
